@@ -1,235 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Star Wars Galaxy Map</title>
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap');
-:root{--bg:#000000;--glass:rgba(44,44,46,0.62);--glass-border:rgba(255,255,255,0.1);--glass-blur:blur(40px) saturate(180%);--cyan:#0A84FF;--gold:#FFD60A;--t1:#FFFFFF;--t2:rgba(235,235,245,0.6);--t3:rgba(235,235,245,0.3);--t4:rgba(235,235,245,0.18);--fill:rgba(120,120,128,0.36);--sf:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',sans-serif;--sf-display:-apple-system,BlinkMacSystemFont,'SF Pro Display','Helvetica Neue',sans-serif;--sf-mono:'SF Mono',SFMono-Regular,'Share Tech Mono',monospace;--radius:16px;--radius-sm:12px;--radius-xs:10px}
-*{margin:0;padding:0;box-sizing:border-box}
-body{background:var(--bg);color:var(--t1);font-family:'Rajdhani',sans-serif;overflow:hidden;height:100vh;width:100vw}
-#vp{position:absolute;inset:0;overflow:hidden;cursor:crosshair}
-#mc{position:absolute;transform-origin:0 0;will-change:transform}
-canvas{display:block;position:absolute;top:0;left:0}
-#cv-routes,#cv-route-anim{image-rendering:-webkit-optimize-contrast}
-#cv-bg{z-index:0}#cv-twinkle{z-index:0}#cv-regions{z-index:1}#cv-grid{z-index:2}#cv-routes{z-index:3}#cv-route-anim{z-index:3}
-#grid-glass{position:absolute;z-index:0;background:rgba(8,6,14,0.70);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);border:1px solid rgba(255,255,255,0.08);border-radius:8px;pointer-events:none}
-#pl{position:absolute;top:0;left:0;z-index:4}
-.pd{position:absolute;border-radius:50%;transform:translate(-50%,-50%);cursor:pointer;z-index:5;opacity:.9;transition:all .4s ease;border:1.5px solid rgba(0,0,0,0.4)}
-.pd.dimmed{width:2px!important;height:2px!important;border-radius:1px;opacity:.25;box-shadow:none!important;border-width:0;transition:all .4s ease}
-.pd.focused{opacity:1;border-width:2px;transition:all .4s ease}
-.pd.hl{z-index:100;border-width:2px}
-.pd.hl .pulse{display:block}
-.pulse{display:none;position:absolute;top:50%;left:50%;width:40px;height:40px;border-radius:50%;transform:translate(-50%,-50%);border:2px solid currentColor;opacity:0;animation:pulseRing 2s ease-out infinite;pointer-events:none}
-@keyframes pulseRing{0%{width:16px;height:16px;opacity:.9;border-width:2px}100%{width:50px;height:50px;opacity:0;border-width:1px}}
-@keyframes spin{to{transform:rotate(360deg)}}
-.pd:hover{opacity:1;z-index:100}
-.pd.hl .halo{display:block}
-.halo{display:none;position:absolute;top:50%;left:50%;width:22px;height:22px;border-radius:50%;transform:translate(-50%,-50%);border:1.5px solid currentColor;animation:ph 1.8s ease-in-out infinite;pointer-events:none}
-.halo2{animation-delay:.4s;width:30px;height:30px;opacity:.4}
-@keyframes ph{0%,100%{opacity:.5;transform:translate(-50%,-50%) scale(.8)}50%{opacity:1;transform:translate(-50%,-50%) scale(1.15)}}
-.pt{position:absolute;border-radius:var(--radius-xs);padding:7px 14px;font-family:var(--sf);font-size:13px;font-weight:500;color:#fff;white-space:nowrap;pointer-events:none;z-index:200;box-shadow:0 4px 16px rgba(0,0,0,0.4);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);display:none}
-.pt.tt-top{left:50%;bottom:100%;transform:translateX(-50%);margin-bottom:8px}
-.pt.tt-bottom{left:50%;top:100%;transform:translateX(-50%);margin-top:8px}
-.pt.tt-left{right:100%;top:50%;transform:translateY(-50%);margin-right:8px}
-.pt.tt-right{left:100%;top:50%;transform:translateY(-50%);margin-left:8px}
-.route-label{position:absolute;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-xs);padding:8px 16px;font-family:var(--sf);font-size:14px;font-weight:600;color:rgba(255,255,255,0.9);white-space:nowrap;pointer-events:none;z-index:210;transform:translate(-50%,-250%);box-shadow:0 4px 20px rgba(0,0,0,0.5);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);letter-spacing:0.3px}
-#sc{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:500;width:600px;display:flex;flex-direction:column}
-#sw{display:flex;align-items:center;width:100%;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius);padding:0 20px;backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);transition:border-color .2s,box-shadow .2s;box-shadow:0 4px 24px rgba(0,0,0,0.3)}
-#sw:focus-within{border-color:rgba(10,132,255,0.5);box-shadow:0 0 0 4px rgba(10,132,255,0.15),0 8px 32px rgba(0,0,0,0.4)}
-#si{flex:1;background:none;border:none;outline:none;color:var(--t1);font-family:var(--sf);font-size:17px;padding:16px 0 16px 12px;letter-spacing:.3px}
-#si::placeholder{color:var(--t3)}
-#sx{background:none;border:none;color:var(--t3);cursor:pointer;font-size:20px;padding:4px;display:none}
-#sr{width:100%;max-height:420px;overflow-y:auto;background:var(--glass);border:1px solid var(--glass-border);border-top:none;border-radius:0 0 var(--radius) var(--radius);display:none;backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur)}
-.ri{padding:13px 20px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.06);transition:background .15s;font-size:15px}
-.ri:hover,.ri.ac{background:rgba(255,255,255,0.08)}
-.rn{font-weight:600;color:var(--t1);font-family:var(--sf)}.rm{font-family:var(--sf-mono);font-size:11px;color:var(--t2)}
-#dp{position:fixed;top:0;right:0;width:480px;height:100vh;background:var(--glass);border-left:1px solid var(--glass-border);transform:translateX(100%);transition:transform .35s cubic-bezier(.32,.72,0,1);z-index:600;display:flex;flex-direction:column;backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur)}
-#dp.open{transform:translateX(0)}
-#ph{padding:22px 24px 16px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:flex-start}
-#pn{font-family:var(--sf-display);font-size:24px;font-weight:700;letter-spacing:0.3px;line-height:1.3}
-#pn-sub{font-family:var(--sf);font-size:12px;font-weight:400;color:rgba(235,235,245,0.35);margin-top:3px;display:none}
-#pc{background:rgba(120,120,128,0.32);border:none;border-radius:50%;color:rgba(235,235,245,0.6);cursor:pointer;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;margin-left:10px;transition:all .15s}
-#pc:hover{background:rgba(120,120,128,0.48);color:#fff}
-#pb{padding:18px 24px;overflow-y:auto;flex:1}
-#canon-legends-seg{display:none;padding:0 0 16px}
-#canon-legends-seg.show{display:block}
-.cl-ctrl{display:flex;background:rgba(118,118,128,0.24);border-radius:9px;padding:2px}
-.cl-btn{flex:1;padding:7px 0;border:none;background:transparent;color:rgba(235,235,245,0.6);font-family:var(--sf);font-size:13px;font-weight:500;cursor:pointer;border-radius:7px;transition:all .2s;position:relative;z-index:1}
-.cl-btn.active{background:rgba(99,99,102,0.55);color:rgba(255,255,255,0.95);box-shadow:0 1px 3px rgba(0,0,0,0.3),0 1px 2px rgba(0,0,0,0.2)}
-.cl-btn:hover:not(.active):not(:disabled){color:rgba(235,235,245,0.8)}
-.cl-btn:disabled{cursor:default;opacity:0.6}
-.cl-loading .cl-spin{display:inline-block;width:10px;height:10px;border:1.5px solid rgba(255,255,255,0.2);border-top-color:rgba(255,255,255,0.7);border-radius:50%;animation:spin .8s linear infinite;margin-left:6px;vertical-align:middle}
-.tab-canon,.tab-legends{display:none}
-.tab-canon.active,.tab-legends.active{display:block}
-.legends-loading{display:flex;align-items:center;gap:10px;padding:12px 0}
-.legends-loading span{color:rgba(235,235,245,0.4);font-size:12px}
-.legends-badge{display:inline-block;font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:rgba(235,235,245,0.5);background:rgba(255,255,255,0.08);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);padding:3px 8px;border-radius:6px;margin-left:8px;vertical-align:middle;line-height:1;border:1px solid rgba(255,255,255,0.06)}
-.ph2{font-family:var(--sf-display);font-size:15px;font-weight:600;color:rgba(235,235,245,0.85);letter-spacing:0.2px;margin:24px 0 28px;padding-bottom:12px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;gap:8px}
-.ph2 svg{width:16px;height:16px;flex-shrink:0;opacity:0.7}
-.ph2:first-child{margin-top:0}
-.ps{margin-bottom:28px}.pst{font-family:var(--sf);font-size:11px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:rgba(235,235,245,0.35);margin-bottom:10px;padding-bottom:5px;border-bottom:1px solid rgba(255,255,255,0.06)}
-.lore-section{margin-bottom:24px}
-.lore-section .pst{border-bottom:none;padding-bottom:0;margin-bottom:8px}
-.pf{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.05)}
-.pfl{font-size:13px;color:rgba(235,235,245,0.5);font-weight:500;font-family:var(--sf)}.pfv{font-family:var(--sf);font-size:13px;color:rgba(255,255,255,0.85);text-align:right;max-width:60%}
-.plore{font-size:13px;line-height:1.7;color:rgba(235,235,245,0.65);font-family:var(--sf)}.plore-l{color:rgba(235,235,245,0.3);font-style:italic;font-size:12px}
-#ai-chat{margin-top:8px;padding-top:0}
-#ai-chat .ph2{margin-top:24px}
-#ai-input-wrap{display:flex;gap:8px;align-items:flex-end;margin-top:12px;clear:both}
-#ai-input{flex:1;background:rgba(118,118,128,0.2);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 14px;color:rgba(255,255,255,0.9);font-family:var(--sf);font-size:13px;resize:none;outline:none;max-height:80px;line-height:1.4}
-#ai-input:focus{border-color:rgba(10,132,255,0.4)}
-#ai-input::placeholder{color:rgba(235,235,245,0.25)}
-#ai-send{background:rgba(10,132,255,0.8);border:none;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .15s}
-#ai-send:hover{filter:brightness(1.2)}
-#ai-send:disabled{opacity:0.3;cursor:default;filter:none}
-#ai-send svg{width:14px;height:14px}
-#ai-sheet{position:absolute;bottom:0;left:0;right:0;height:50%;background:rgba(28,28,30,0.98);backdrop-filter:blur(40px);-webkit-backdrop-filter:blur(40px);z-index:10;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .3s cubic-bezier(.32,.72,0,1);border-top-left-radius:14px;border-top-right-radius:14px;box-shadow:0 -4px 20px rgba(0,0,0,0.4)}
-#ai-sheet.open{transform:translateY(0)}
-#ai-sheet-header{padding:8px 20px 12px;display:flex;flex-direction:column;align-items:center;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0;cursor:grab;user-select:none;touch-action:none}
-#ai-sheet-header:active{cursor:grabbing}
-#ai-sheet-handle{width:36px;height:4px;border-radius:2px;background:rgba(255,255,255,0.15);margin-bottom:10px;cursor:grab}
-#ai-sheet-handle:active{cursor:grabbing}
-#ai-sheet-bar{display:flex;justify-content:space-between;align-items:center;width:100%}
-#ai-sheet-title{font-family:var(--sf-display);font-size:15px;font-weight:600;color:rgba(235,235,245,0.85);display:flex;align-items:center;gap:8px}
-#ai-sheet-title svg{width:16px;height:16px;opacity:0.7}
-#ai-sheet-close{background:rgba(120,120,128,0.32);border:none;border-radius:50%;color:rgba(235,235,245,0.6);cursor:pointer;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:12px;transition:all .15s}
-#ai-sheet-close:hover{background:rgba(120,120,128,0.48);color:#fff}
-#ai-messages{flex:1;overflow-y:auto;padding:16px 20px;scrollbar-width:thin;scrollbar-color:rgba(99,99,102,0.55) transparent}
-#ai-messages::-webkit-scrollbar{width:6px}
-#ai-messages::-webkit-scrollbar-track{background:rgba(255,255,255,0.03);border-radius:3px}
-#ai-messages::-webkit-scrollbar-thumb{background:rgba(99,99,102,0.55);border-radius:3px}
-.ai-msg{margin-bottom:14px;font-size:13px;line-height:1.65;font-family:var(--sf)}
-.ai-msg.user{color:#fff;padding:8px 12px;background:rgba(10,132,255,0.85);border-radius:12px 12px 4px 12px;display:inline-block;max-width:85%;float:right;clear:both}
-.ai-label{font-family:var(--sf);font-size:11px;font-weight:600;color:rgba(235,235,245,0.35);margin-bottom:4px;clear:both}
-.ai-msg.assistant{color:rgba(235,235,245,0.8);clear:both;padding:10px 14px;background:rgba(255,255,255,0.06);border-radius:12px 12px 12px 4px;max-width:90%}
-.ai-msg.assistant p{margin:0 0 8px 0}
-.ai-msg.assistant p:last-child{margin-bottom:0}
-.ai-typing{display:flex;gap:4px;padding:8px 0;clear:both}
-.ai-typing span{width:6px;height:6px;border-radius:50%;background:rgba(235,235,245,0.3);animation:aiDot 1.2s infinite}
-.ai-typing span:nth-child(2){animation-delay:.2s}
-.ai-typing span:nth-child(3){animation-delay:.4s}
-@keyframes aiDot{0%,80%,100%{opacity:.3;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
-#ai-sheet-input{display:flex;gap:8px;align-items:flex-end;padding:12px 20px 16px;border-top:1px solid rgba(255,255,255,0.06);flex-shrink:0}
-#ai-sheet-input textarea{flex:1;background:rgba(118,118,128,0.2);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 14px;color:rgba(255,255,255,0.9);font-family:var(--sf);font-size:13px;resize:none;outline:none;max-height:80px;line-height:1.4}
-#ai-sheet-input textarea:focus{border-color:rgba(10,132,255,0.4)}
-#ai-sheet-input textarea::placeholder{color:rgba(235,235,245,0.25)}
-#ai-sheet-input button{background:rgba(10,132,255,0.8);border:none;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .15s}
-#ai-sheet-input button:hover{filter:brightness(1.2)}
-#ai-sheet-input button:disabled{opacity:0.3;cursor:default;filter:none}
-#ai-sheet-input button svg{width:14px;height:14px}
-#lg{position:fixed;bottom:16px;left:16px;z-index:400;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius);padding:10px 12px;backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);font-size:11px;max-height:calc(100vh - 100px);overflow-y:auto;width:210px}
-.lt{font-family:var(--sf);font-size:11px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:rgba(235,235,245,0.35);margin-bottom:8px}
-.lg-section{margin-bottom:4px}
-.lg-header{display:flex;align-items:center;gap:6px;padding:7px 8px;cursor:pointer;border-radius:8px;transition:background .15s;user-select:none}
-.lg-header:hover{background:rgba(255,255,255,0.06)}
-.lg-chevron{color:rgba(235,235,245,0.3);font-size:10px;transition:transform .2s;display:inline-block;width:10px}
-.lg-chevron.open{transform:rotate(90deg)}
-.lg-body{max-height:0;overflow:hidden;transition:max-height .25s ease-out}
-.lg-body.open{max-height:500px;transition:max-height .3s ease-in}
-.li{display:flex;align-items:center;gap:8px;padding:5px 8px 5px 24px;cursor:pointer;border-radius:8px;transition:background .15s}.li:hover{background:rgba(255,255,255,0.08)}.li.active{background:rgba(10,132,255,0.18);box-shadow:inset 0 0 0 1px rgba(10,132,255,0.25)}.ld{width:8px;height:8px;border-radius:50%;flex-shrink:0}.ll{color:rgba(235,235,245,0.6);font-weight:500;user-select:none;font-family:var(--sf);font-size:13px}
-.li.active .ll{color:rgba(255,255,255,0.9)}
-.lline{width:16px;height:2px;flex-shrink:0;border-radius:1px}
-.lg-toggle{display:flex;align-items:center;gap:10px;padding:7px 8px;cursor:pointer;border-radius:8px;transition:background .15s;user-select:none}
-.lg-toggle:hover{background:rgba(255,255,255,0.06)}
-.lg-toggle-track{width:34px;height:20px;border-radius:10px;background:rgba(120,120,128,0.32);transition:background .2s;position:relative;flex-shrink:0}
-.lg-toggle.on .lg-toggle-track{background:rgba(48,209,88,0.9)}
-.lg-toggle-thumb{width:16px;height:16px;border-radius:8px;background:#fff;position:absolute;top:2px;left:2px;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,0.3)}
-.lg-toggle.on .lg-toggle-thumb{transform:translateX(14px)}
-#mic-btn{background:none;border:none;color:var(--t3);cursor:pointer;padding:6px;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:20px;transition:all .2s;flex-shrink:0;position:relative}
-#mic-btn:hover{color:var(--t2);background:rgba(255,255,255,0.06)}
-#mic-btn.recording{color:#FF453A;background:rgba(255,69,58,0.12);padding:6px 10px}
-#mic-btn.disabled{opacity:.25;cursor:default;pointer-events:none}
-#mic-btn .mic-tip{display:none;position:absolute;bottom:-32px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:11px;color:var(--t3);background:var(--glass);border:1px solid var(--glass-border);border-radius:6px;padding:4px 8px;backdrop-filter:var(--glass-blur);pointer-events:none}
-#mic-btn.disabled:hover .mic-tip{display:block}
-#mic-btn .mic-icon{display:block}
-#mic-btn .mic-wave{display:none}
-#mic-btn.recording .mic-icon{display:none}
-#mic-btn.recording .mic-wave{display:flex;align-items:center;gap:2px;height:16px}
-.mic-bar{width:3px;border-radius:1.5px;background:#FF453A;animation:micBar .8s ease-in-out infinite}
-.mic-bar:nth-child(1){height:6px;animation-delay:0s}
-.mic-bar:nth-child(2){height:12px;animation-delay:.1s}
-.mic-bar:nth-child(3){height:16px;animation-delay:.2s}
-.mic-bar:nth-child(4){height:10px;animation-delay:.3s}
-.mic-bar:nth-child(5){height:6px;animation-delay:.15s}
-@keyframes micBar{0%,100%{transform:scaleY(.4)}50%{transform:scaleY(1)}}
-#zc{position:fixed;bottom:14px;right:14px;z-index:400;display:flex;flex-direction:column;gap:3px}
-.zb{width:40px;height:40px;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-sm);color:rgba(235,235,245,0.6);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);transition:all .15s;font-family:var(--sf)}
-.zb:hover{background:rgba(255,255,255,0.12);color:#fff}
-#cd{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:400;font-family:var(--sf-mono);font-size:11px;color:rgba(235,235,245,0.3);background:rgba(44,44,46,0.5);padding:5px 14px;border-radius:var(--radius-xs);border:1px solid rgba(255,255,255,0.06);backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px)}
-#ls{position:fixed;inset:0;background:#000;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity .8s;overflow:hidden}
-#ls.fo{opacity:0;pointer-events:none}
-#ls-stars{position:absolute;inset:0;overflow:hidden}
-#ls-grid{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0.08}
-#ls-content{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center}
-#ls-sub{font-family:'Orbitron',sans-serif;font-size:14px;font-weight:400;letter-spacing:10px;text-transform:uppercase;color:rgba(255,255,255,0.85);margin-bottom:12px}
-#ls-title{font-family:'Orbitron',sans-serif;font-size:11px;font-weight:400;letter-spacing:6px;text-transform:uppercase;color:rgba(120,160,200,0.5);margin-bottom:32px}
-#lbc{width:280px;height:2px;background:rgba(120,160,200,0.12);border-radius:2px;overflow:hidden;position:relative}
-#lb{height:100%;width:0%;background:rgba(120,160,200,0.5);border-radius:2px;transition:width .3s;box-shadow:0 0 8px rgba(120,160,200,0.3)}
-#lst{font-family:'Share Tech Mono',monospace;font-size:10px;color:rgba(120,160,200,0.35);margin-top:14px;letter-spacing:2px;text-transform:uppercase}
-#maptitle{position:absolute;z-index:6;pointer-events:none;display:flex;flex-direction:column;align-items:center}
-#maptitle img{width:726px;height:auto}
-#maptitle .sw-sub{font-family:'Orbitron',sans-serif;font-size:48px;font-weight:700;letter-spacing:29px;text-transform:uppercase;color:rgba(255,255,255,0.85);margin-top:9px}
-#maptitle .sw-quote{font-family:'Orbitron',sans-serif;font-size:20px;font-weight:400;letter-spacing:8px;text-transform:uppercase;color:rgba(120,160,200,0.5);margin-top:18px;white-space:nowrap}
-::-webkit-scrollbar{width:0;height:0}
-#pb{--scroll-color:rgba(99,99,102,0.55);--scroll-color-hover:rgba(99,99,102,0.75);scrollbar-width:thin;scrollbar-color:var(--scroll-color) transparent}
-#pb::-webkit-scrollbar{width:6px}
-#pb::-webkit-scrollbar-track{background:rgba(255,255,255,0.03);border-radius:3px}
-#pb::-webkit-scrollbar-thumb{background:var(--scroll-color);border-radius:3px;min-height:40px}
-#pb::-webkit-scrollbar-thumb:hover{background:var(--scroll-color-hover,rgba(10,132,255,0.7))}
-</style>
-</head>
-<body>
-<div id="ls">
-<canvas id="ls-stars"></canvas>
-<svg id="ls-grid" viewBox="0 0 400 400" width="400" height="400" xmlns="http://www.w3.org/2000/svg">
-<defs><line id="v" y1="0" y2="400" stroke="rgba(120,160,200,0.6)" stroke-width="0.5"/><line id="h" x1="0" x2="400" stroke="rgba(120,160,200,0.6)" stroke-width="0.5"/></defs>
-<use href="#v" x="0"/><use href="#v" x="50"/><use href="#v" x="100"/><use href="#v" x="150"/><use href="#v" x="200"/><use href="#v" x="250"/><use href="#v" x="300"/><use href="#v" x="350"/><use href="#v" x="400"/>
-<use href="#h" y="0"/><use href="#h" y="50"/><use href="#h" y="100"/><use href="#h" y="150"/><use href="#h" y="200"/><use href="#h" y="250"/><use href="#h" y="300"/><use href="#h" y="350"/><use href="#h" y="400"/>
-</svg>
-<div id="ls-content">
-<img id="ls-logo" style="width:300px;height:auto;margin-bottom:4px" alt="Star Wars"/>
-<div id="ls-sub">Galaxy Map</div>
-<div id="ls-title">A long time ago in a galaxy far, far away</div>
-<div id="lbc"><div id="lb"></div></div>
-<div id="lst">Initializing...</div>
-</div>
-</div>
-<div id="sc"><div id="sw"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;margin-right:8px"><circle cx="6.5" cy="6.5" r="5" stroke="rgba(235,235,245,0.35)" stroke-width="1.5" fill="none"/><line x1="10" y1="10" x2="14.5" y2="14.5" stroke="rgba(235,235,245,0.35)" stroke-width="1.5" stroke-linecap="round"/></svg><input type="text" id="si" placeholder="Search systems or ask a question..." autocomplete="off"/><button id="sx">&times;</button><button id="mic-btn" title="Voice search (Ctrl+Shift+S)"><span class="mic-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a2 2 0 0 0-2 2v4a2 2 0 1 0 4 0V3a2 2 0 0 0-2-2z"/><path d="M4.5 7a.5.5 0 0 0-1 0 4.5 4.5 0 0 0 4 4.473V13H6a.5.5 0 0 0 0 1h4a.5.5 0 0 0 0-1H8.5v-1.527A4.5 4.5 0 0 0 12.5 7a.5.5 0 0 0-1 0 3.5 3.5 0 1 1-7 0z"/></svg></span><span class="mic-wave"><svg width="14" height="16" viewBox="0 0 14 16" fill="#FF453A" style="flex-shrink:0"><path d="M7 0a2 2 0 0 0-2 2v4a2 2 0 1 0 4 0V2a2 2 0 0 0-2-2z"/><path d="M3.5 6a.5.5 0 0 0-1 0 4.5 4.5 0 0 0 4 4.473V12H5a.5.5 0 0 0 0 1h4a.5.5 0 0 0 0-1H7.5v-1.527A4.5 4.5 0 0 0 11.5 6a.5.5 0 0 0-1 0 3.5 3.5 0 1 1-7 0z"/></svg><div class="mic-bar"></div><div class="mic-bar"></div><div class="mic-bar"></div><div class="mic-bar"></div><div class="mic-bar"></div></span><span class="mic-tip">No microphone detected</span></button></div><div id="sr"></div></div>
-<div id="vp"><canvas id="cv-starfield" style="position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:-1"></canvas><div id="mc"><div id="grid-glass"></div><canvas id="cv-bg"></canvas><canvas id="cv-twinkle"></canvas><canvas id="cv-regions"></canvas><canvas id="cv-grid"></canvas><canvas id="cv-routes"></canvas><canvas id="cv-route-anim"></canvas><div id="pl"></div><div id="maptitle"></div></div></div>
-<div id="dp"><div id="ph"><div style="flex:1"><div id="pn"></div><div id="pn-sub"></div></div><button id="pc">&times;</button></div><div id="pb"></div><div id="ai-sheet"><div id="ai-sheet-header"><div id="ai-sheet-handle"></div><div id="ai-sheet-bar"><div id="ai-sheet-title"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h9a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H6l-2.5 2.5V10H2a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M5 10v1a1 1 0 0 0 1 1h5l2.5 2.5V12H15a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-3"/></svg><span id="ai-sheet-planet"></span></div><button id="ai-sheet-close">&times;</button></div></div><div id="ai-messages"></div><div id="ai-sheet-input"><textarea rows="1" placeholder="Ask about this planet..."></textarea><button disabled><svg viewBox="0 0 16 16" fill="white"><path d="M2.5 8L13.5 8M9 3.5L13.5 8L9 12.5" stroke="white" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div></div></div>
-<div id="lg">
-  <div class="lg-section">
-    <div class="lg-header" data-section="regions"><span class="lg-chevron open">&#9656;</span><span class="lt" style="margin-bottom:0">Galactic Regions</span></div>
-    <div class="lg-body open" id="lg-regions">
-      <div class="li" data-region="Deep Core"><div class="ld" style="background:#FFD60A"></div><span class="ll">Deep Core</span></div>
-      <div class="li" data-region="Core Worlds"><div class="ld" style="background:#FF9F0A"></div><span class="ll">Core Worlds</span></div>
-      <div class="li" data-region="Colonies"><div class="ld" style="background:#FF6B2B"></div><span class="ll">Colonies</span></div>
-      <div class="li" data-region="Inner Rim"><div class="ld" style="background:#E8E050"></div><span class="ll">Inner Rim</span></div>
-      <div class="li" data-region="Expansion Region"><div class="ld" style="background:#30D158"></div><span class="ll">Expansion Region</span></div>
-      <div class="li" data-region="Mid Rim"><div class="ld" style="background:#0A84FF"></div><span class="ll">Mid Rim</span></div>
-      <div class="li" data-region="Outer Rim Territories"><div class="ld" style="background:#64D2FF"></div><span class="ll">Outer Rim</span></div>
-      <div class="li" data-region="Hutt Space"><div class="ld" style="background:#FF2D92"></div><span class="ll">Hutt Space</span></div>
-      <div class="li" data-region="Wild Space"><div class="ld" style="background:#BF5AF2"></div><span class="ll">Wild Space</span></div>
-      <div class="li" data-region="Unknown Regions"><div class="ld" style="background:#5E5CE6"></div><span class="ll">Unknown Regions</span></div>
-    </div>
-  </div>
-  <div class="lg-section" style="margin-top:4px;border-top:1px solid rgba(255,255,255,0.06);padding-top:6px">
-    <div class="lg-toggle on" id="show-all-toggle">
-      <div class="lg-toggle-track"><div class="lg-toggle-thumb"></div></div>
-      <span class="lt" style="margin-bottom:0">Show All Planets</span>
-    </div>
-    <div class="lg-toggle" id="routes-toggle">
-      <div class="lg-toggle-track"><div class="lg-toggle-thumb"></div></div>
-      <span class="lt" style="margin-bottom:0">Hyperspace Routes</span>
-    </div>
-  </div>
-</div>
-<div id="zc"><button class="zb" id="zi">+</button><button class="zb" id="zo">&minus;</button><button class="zb" id="zr" style="font-size:11px">&#8634;</button></div>
-<div id="cd">GRID: --</div>
-
-<script>
+/* ── CONSTANTS & CONFIGURATION ── */
 const SW_LOGO='data:image/png;base64,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';
 const CW=7000,CH=7000,G={left:1621,top:1071,cellW:183,cellH:183,cols:['C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U'],rowMin:1,rowMax:21},NCOLS=G.cols.length,NROWS=21;
 const RCOL={'Deep Core':{fill:'rgba(255,214,10,0.35)',stroke:'rgba(255,214,10,0.5)',dot:'#FFD60A',hl:'#FFE545',glow:'rgba(255,214,10,0.6)'},'Core Worlds':{fill:'rgba(255,159,10,0.25)',stroke:'rgba(255,159,10,0.45)',dot:'#FF9F0A',hl:'#FFB840',glow:'rgba(255,159,10,0.6)'},'Colonies':{fill:'rgba(255,107,43,0.20)',stroke:'rgba(255,107,43,0.40)',dot:'#FF6B2B',hl:'#FF8F55',glow:'rgba(255,107,43,0.6)'},'Inner Rim':{fill:'rgba(232,224,80,0.16)',stroke:'rgba(232,224,80,0.35)',dot:'#E8E050',hl:'#F0EC78',glow:'rgba(232,224,80,0.6)'},'Expansion Region':{fill:'rgba(48,209,88,0.14)',stroke:'rgba(48,209,88,0.30)',dot:'#30D158',hl:'#50F07A',glow:'rgba(48,209,88,0.6)'},'Mid Rim':{fill:'rgba(10,132,255,0.12)',stroke:'rgba(10,132,255,0.28)',dot:'#0A84FF',hl:'#4DA6FF',glow:'rgba(10,132,255,0.6)'},'Outer Rim Territories':{fill:'rgba(100,210,255,0.10)',stroke:'rgba(100,210,255,0.22)',dot:'#64D2FF',hl:'#8CE0FF',glow:'rgba(100,210,255,0.6)'},'Hutt Space':{fill:'rgba(255,45,146,0.30)',stroke:'rgba(255,45,146,0.50)',dot:'#FF2D92',hl:'#FF5CAE',glow:'rgba(255,45,146,0.6)'},'Wild Space':{fill:'rgba(191,90,242,0.08)',stroke:'rgba(191,90,242,0.18)',dot:'#BF5AF2',hl:'#D080FF',glow:'rgba(191,90,242,0.6)'},'Unknown Regions':{fill:'rgba(94,92,230,0.10)',stroke:'rgba(94,92,230,0.22)',dot:'#5E5CE6',hl:'#8280FF',glow:'rgba(94,92,230,0.6)'},'Corporate Sector':{fill:'rgba(100,210,255,0.10)',stroke:'rgba(100,210,255,0.22)',dot:'#64D2FF',hl:'#8CE0FF',glow:'rgba(100,210,255,0.6)'}};
@@ -246,7 +15,9 @@ const ALIASES={
   'korriban':{db:'Moraband',wiki:'Korriban/Legends'},
   'dxun':{db:'Onderon',wiki:'Dxun'},
 };
+/* ── APPLICATION STATE ── */
 let S=[],PE=[],sc=.11,px=0,py=0,drag=false,dsx,dsy,psx,psy,sel=null,asi=-1;
+/* ── COORDINATE SYSTEM ── */
 function cc(col,row){return{x:G.left+(G.cols.indexOf(col)+.5)*G.cellW,y:G.top+(row-G.rowMin+.5)*G.cellH}}
 function gc(g){const p=g.split('-');return cc(p[0],parseInt(p[1]))}
 function srand(s){let x=Math.sin(s)*10000;return x-Math.floor(x)}
@@ -257,6 +28,7 @@ function g2p(g,n){
   // Full cell spread + overflow so planets land on and across grid lines
   return{x:G.left+(ci+.5)*G.cellW+(srand(h)-.5)*G.cellW*1.0,y:G.top+(r-G.rowMin+.5)*G.cellH+(srand(h+1)-.5)*G.cellH*1.0}
 }
+/* ── MAP BACKGROUND RENDERING ── */
 function drawBg(){
   const cv=document.getElementById('cv-bg');cv.width=CW;cv.height=CH;const ctx=cv.getContext('2d');
   // Canvas starts transparent - animated starfield shows through from behind
@@ -332,6 +104,7 @@ function drawBg(){
   }
 }
 
+/* ── STARFIELD ANIMATION ── */
 // Animated radial starfield - stars drift outward from center
 // Acceleration system: call window.starfieldBoost() to trigger 3-second speed burst
 // Pan parallax: origin shifts opposite to drag direction
@@ -492,6 +265,7 @@ function initStarfield(){
 
   animateStarfield();
 }
+/* ── TWINKLE STARS (disabled) ── */
 // Animated twinkling stars
 const twinkleStars=[];
 function initTwinkle(){
@@ -536,6 +310,7 @@ function animTwinkle(){
   ctx.globalAlpha=1;
   requestAnimationFrame(animTwinkle);
 }
+/* ── GRID & REGION RENDERING ── */
 function drawRegions(){}
 function drawGrid(){
   // Position glass overlay over the grid area
@@ -597,6 +372,7 @@ function drawGrid(){
   mt.style.transform='translateX(-50%)';
   mt.innerHTML='<img id="sw-logo-img" src="'+SW_LOGO+'" alt="Star Wars"/><span class="sw-sub">GALAXY MAP</span><span class="sw-quote">A long time ago in a galaxy far, far away</span>';
 }
+/* ── TRADE ROUTE RENDERING ── */
 function drawRoutes(routeName){
   const cv=document.getElementById('cv-routes');cv.width=CW;cv.height=CH;const ctx=cv.getContext('2d');
   // Remove any existing route labels
@@ -656,6 +432,7 @@ function drawRoutes(routeName){
 }
 
 /* Route light pulse animation - traveling dots + alternating route glow */
+/* ── ROUTE PULSE ANIMATION ── */
 let routeAnimId=null;
 function startRouteAnimation(){
   if(routeAnimId)cancelAnimationFrame(routeAnimId);
@@ -721,6 +498,7 @@ function startRouteAnimation(){
   }
   routeAnimId=requestAnimationFrame(animate);
 }
+/* ── ROUTE ANIMATION STOP ── */
 function stopRouteAnimation(){
   if(routeAnimId){cancelAnimationFrame(routeAnimId);routeAnimId=null}
   const cv=document.getElementById('cv-route-anim');
@@ -728,6 +506,7 @@ function stopRouteAnimation(){
 }
 
 /* Route fact sheet panel */
+/* ── ROUTE PANEL ── */
 function openRoutePanel(route){
   const pn=document.getElementById('pn');
   pn.textContent=route.n;
@@ -748,6 +527,7 @@ function openRoutePanel(route){
   fetchRouteData(route);
 }
 
+/* ── ROUTE DATA FETCHING ── */
 async function fetchRouteData(route){
   const el=document.getElementById('fact-sheet');if(!el)return;
   const wikiName=route.n.replace(/ /g,'_');
@@ -855,6 +635,7 @@ async function fetchRouteData(route){
 }
 /* Collision-aware tooltip positioning: checks nearby planets and picks
    the direction (top/bottom/left/right) with the least obstruction */
+/* ── TOOLTIP SYSTEM ── */
 function positionTooltip(dotEl){
   const tt=dotEl.querySelector('.pt');
   if(!tt)return;
@@ -938,6 +719,7 @@ function hideTooltip(dotEl){
    Tier 1 (major): Capital worlds, saga-critical planets
    Tier 2 (notable): Significant in films/series but not saga-defining
    Tier 3 (default): Everything else, with hash-based micro-variation */
+/* ── PLANET SIZING & RENDERING ── */
 const PLANET_TIER1=new Set([
   'Coruscant','Tatooine','Naboo','Hoth','Endor','Mustafar','Kamino',
   'Kashyyyk','Dagobah','Alderaan','Bespin','Jakku','Mandalore','Scarif',
@@ -1003,6 +785,7 @@ function renderPlanets(){
     frag.appendChild(d);PE.push(d)});
   layer.appendChild(frag)
 }
+/* ── VIEWPORT NAVIGATION ── */
 function aT(){document.getElementById('mc').style.transform=`translate(${px}px,${py}px) scale(${sc})`}
 function zT(ns,cx,cy){const vp=document.getElementById('vp'),r=vp.getBoundingClientRect();cx=cx??r.width/2;cy=cy??r.height/2;
   const mx=(cx-px)/sc,my=(cy-py)/sc;ns=Math.max(.2,Math.min(6,ns));px=cx-mx*ns;py=cy-my*ns;sc=ns;aT();uDV()}
@@ -1049,6 +832,7 @@ function openPanel(sys,aliasKey){
   document.getElementById('dp').classList.add('open');fetchAllData(sys,alias)}
 
 // Section headers
+/* ── PANEL CONTENT BUILDERS ── */
 function sectionHeader(title){
   return `<div class="pst">${title}</div>`;
 }
@@ -1160,6 +944,7 @@ function buildPlanetContent(wiki,swapi,sys,name){
   return {html,hasSubstantialContent};
 }
 
+/* ── PLANET DATA FETCHING ── */
 async function fetchAllData(sys,alias){
   const el=document.getElementById('fact-sheet');if(!el)return;
   try{
@@ -1258,6 +1043,7 @@ async function fetchAllData(sys,alias){
   }catch(err){console.error('fetchAllData error:',err);el.innerHTML='<span class="plore-l">Error loading data. Try again.</span>'}
 }
 
+/* ── LEGENDS DATA FETCHING ── */
 async function fetchLegendsData(wikiName,sys,name){
   try{
     const legendsName=wikiName.includes('/Legends')?wikiName:wikiName+'/Legends';
@@ -1296,6 +1082,7 @@ async function fetchLegendsData(wikiName,sys,name){
   }
 }
 
+/* ── AI CHAT (Planetary Codex) ── */
 /*
 CLAUDE CODE INTEGRATION INSTRUCTIONS
 =====================================
@@ -1428,6 +1215,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   });
 });
 
+/* ── WOOKIEEPEDIA API ── */
 async function fetchWikiInfobox(wikiName){
   try{
     // Fetch infobox (section 0) + article sections list in parallel
@@ -1612,6 +1400,7 @@ async function fetchWikiInfobox(wikiName){
 }
 
 
+/* ── SWAPI (Star Wars API) ── */
 async function fetchSWAPI(name){
   try{
     const r=await fetch('https://swapi.dev/api/planets/?search='+encodeURIComponent(name));
@@ -1641,6 +1430,7 @@ async function fetchSWAPI(name){
     return result;
   }catch(e){return {}}
 }
+/* ── INTELLIGENT SEARCH ── */
 function isQuestion(q){return /^(where|who|what|which|how|why|tell|show|find|take|is |was |did |does |can )/i.test(q)||q.includes('?')}
 // Universal question resolver
 // 1. Extract subject name  2. Search Wookieepedia  3. Extract ALL planet mentions
@@ -1863,6 +1653,7 @@ function showAIResult(sr,si,idx,key){
   sr.querySelector('.ri').addEventListener('click',()=>{selSys(idx,aliasKey);sr.style.display='none';si.value=S[idx].SYSTEM});
   setTimeout(()=>{selSys(idx,aliasKey);sr.style.display='none';si.value=S[idx].SYSTEM},600);
 }
+/* ── SEARCH BAR SETUP ── */
 function setupSearch(){const si=document.getElementById('si'),sr=document.getElementById('sr'),sx=document.getElementById('sx');
   si.addEventListener('input',()=>{const q=si.value.trim();const ql=q.toLowerCase();sx.style.display=q?'block':'none';asi=-1;
     if(q.length<2){sr.style.display='none';return}
@@ -1913,6 +1704,7 @@ function setupSearch(){const si=document.getElementById('si'),sr=document.getEle
   document.addEventListener('click',e=>{if(!document.getElementById('sc').contains(e.target))sr.style.display='none'})}
 function uAR(items){items.forEach((it,i)=>it.classList.toggle('ac',i===asi));if(items[asi])items[asi].scrollIntoView({block:'nearest'})}
 function hl(t,q){const i=t.toLowerCase().indexOf(q);if(i===-1)return t;return t.substring(0,i)+'<span style="color:var(--cyan)">'+t.substring(i,i+q.length)+'</span>'+t.substring(i+q.length)}
+/* ── ROUTE HIT TESTING ── */
 function hitTestRoute(clientX,clientY){
   // Convert screen coords to map coords
   const mx=(clientX-px)/sc, my=(clientY-py)/sc;
@@ -1929,6 +1721,7 @@ function hitTestRoute(clientX,clientY){
   });
   return bestRoute;
 }
+/* ── NAVIGATION SETUP (Pan/Zoom/Touch) ── */
 function setupNav(){const vp=document.getElementById('vp');
   vp.addEventListener('mousedown',e=>{if(e.target.closest('#sc,#dp,#lg,#zc'))return;drag=true;dsx=e.clientX;dsy=e.clientY;psx=px;psy=py;vp.style.cursor='grabbing'});
   window.addEventListener('mousemove',e=>{if(drag){const newPx=psx+(e.clientX-dsx);const newPy=psy+(e.clientY-dsy);window.starfieldPan(newPx-px,newPy-py);px=newPx;py=newPy;aT();uDV()}
@@ -1960,6 +1753,7 @@ function setupNav(){const vp=document.getElementById('vp');
   vp.addEventListener('touchstart',e=>{if(e.touches.length===1){drag=true;dsx=e.touches[0].clientX;dsy=e.touches[0].clientY;psx=px;psy=py}else if(e.touches.length===2){drag=false;ltd=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY)}},{passive:true});
   vp.addEventListener('touchmove',e=>{if(e.touches.length===1&&drag){const newPx=psx+(e.touches[0].clientX-dsx);const newPy=psy+(e.touches[0].clientY-dsy);window.starfieldPan(newPx-px,newPy-py);px=newPx;py=newPy;aT();uDV()}else if(e.touches.length===2&&ltd){const nd=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);zT(sc*(nd/ltd),(e.touches[0].clientX+e.touches[1].clientX)/2,(e.touches[0].clientY+e.touches[1].clientY)/2);ltd=nd}},{passive:true});
   vp.addEventListener('touchend',()=>{drag=false;ltd=null;window.starfieldPanEnd()})}
+/* ── LOADER & INITIALIZATION ── */
 function uL(p,s){document.getElementById('lb').style.width=p+'%';document.getElementById('lst').textContent=s}
 function initLoaderStars(){
   const cv=document.getElementById('ls-stars');
@@ -2300,8 +2094,3 @@ async function init(){
   if(cleanupLoader)cleanupLoader();
   document.getElementById('ls').classList.add('fo');setTimeout(()=>document.getElementById('ls').remove(),800)}
 init();
-
-
-</script>
-</body>
-</html>
