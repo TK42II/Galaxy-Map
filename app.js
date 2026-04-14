@@ -16,19 +16,69 @@ const ALIASES={
   'dxun':{db:'Onderon',wiki:'Dxun'},
 };
 /* ── APPLICATION STATE ── */
+// S = star systems array (loaded from Database.json)
+// PE = planet DOM elements array (one per rendered system)
+// sc = current zoom scale factor
+// px, py = current pan offset in screen pixels
+// drag = whether user is currently dragging the map
+// dsx, dsy = drag start position (screen coords)
+// psx, psy = pan offset at drag start
+// sel = currently selected system object (or null)
+// asi = active search result index for keyboard navigation (-1 = none)
 let S=[],PE=[],sc=.11,px=0,py=0,drag=false,dsx,dsy,psx,psy,sel=null,asi=-1;
+
 /* ── COORDINATE SYSTEM ── */
+
+/**
+ * Convert grid column letter and row number to canvas pixel coordinates.
+ * Returns the center point of the specified grid cell.
+ * @param {string} col - Column letter (e.g. 'L')
+ * @param {number} row - Row number (e.g. 9)
+ * @returns {{x: number, y: number}} Center of the grid cell in canvas coords
+ */
 function cc(col,row){return{x:G.left+(G.cols.indexOf(col)+.5)*G.cellW,y:G.top+(row-G.rowMin+.5)*G.cellH}}
+
+/**
+ * Convert a grid coordinate string (e.g. "L-9") to canvas pixel coordinates.
+ * Parses the string and delegates to cc().
+ * @param {string} g - Grid coordinate in "COL-ROW" format
+ * @returns {{x: number, y: number}} Center of the grid cell
+ */
 function gc(g){const p=g.split('-');return cc(p[0],parseInt(p[1]))}
+
+/**
+ * Seeded pseudo-random number generator. Returns a deterministic value
+ * in [0, 1) for a given seed, ensuring planets always render at the
+ * same position within their grid cell across sessions.
+ * @param {number} s - Integer seed value
+ * @returns {number} Pseudo-random value in [0, 1)
+ */
 function srand(s){let x=Math.sin(s)*10000;return x-Math.floor(x)}
+
+/**
+ * Convert grid coordinate + planet name to a deterministic pixel position.
+ * Uses a hash of the planet name to scatter planets within their grid cell,
+ * so multiple planets in the same cell don't stack on top of each other.
+ * The spread covers the full cell width/height, allowing planets to land
+ * on and across grid lines for a natural distribution.
+ * @param {string} g - Grid coordinate in "COL-ROW" format
+ * @param {string} n - Planet name (used as hash seed for position scatter)
+ * @returns {{x: number, y: number}|null} Pixel position, or null if grid is invalid
+ */
 function g2p(g,n){
   const p=g.split('-');if(p.length!==2)return null;
   const ci=G.cols.indexOf(p[0]),r=parseInt(p[1]);if(ci===-1||isNaN(r))return null;
   let h=0;for(let i=0;i<n.length;i++){h=((h<<5)-h)+n.charCodeAt(i);h|=0}
-  // Full cell spread + overflow so planets land on and across grid lines
   return{x:G.left+(ci+.5)*G.cellW+(srand(h)-.5)*G.cellW*1.0,y:G.top+(r-G.rowMin+.5)*G.cellH+(srand(h+1)-.5)*G.cellH*1.0}
 }
 /* ── MAP BACKGROUND RENDERING ── */
+
+/**
+ * Render the static galaxy background onto cv-bg canvas.
+ * Draws layered blue nebula gradients and a warm core glow at the galactic
+ * center, plus scattered static background stars. The canvas itself is
+ * transparent so the animated starfield layer shows through underneath.
+ */
 function drawBg(){
   const cv=document.getElementById('cv-bg');cv.width=CW;cv.height=CH;const ctx=cv.getContext('2d');
   // Canvas starts transparent - animated starfield shows through from behind
@@ -105,9 +155,12 @@ function drawBg(){
 }
 
 /* ── STARFIELD ANIMATION ── */
-// Animated radial starfield - stars drift outward from center
-// Acceleration system: call window.starfieldBoost() to trigger 3-second speed burst
-// Pan parallax: origin shifts opposite to drag direction
+// Viewport-fixed animated radial starfield rendered behind the map.
+// Stars drift outward from a central origin, creating a deep-space parallax effect.
+// Three interactive behaviors:
+//   1. Boost: window.starfieldBoost() triggers a 3-second speed burst (hyperspace effect)
+//   2. Pan parallax: origin shifts opposite to drag direction during map panning
+//   3. Speed ratchet: drag speed ramps up to peak during drag, decays on release
 let sfSpeedMult=1; // current speed multiplier
 let sfTargetMult=1; // target speed multiplier
 const SF_MAX_ACCEL=8; // max speed multiplier during boost
@@ -140,6 +193,13 @@ window.starfieldPanEnd=function(){
   sfDragVelY=0;
 };
 
+/**
+ * Initialize the viewport-fixed starfield animation on cv-starfield canvas.
+ * Creates 300 stars at random angles/distances from center, each with
+ * individual speed, size, color hue, and saturation. Runs a continuous
+ * requestAnimationFrame loop that moves stars outward, draws motion trails,
+ * and respawns stars that exit the viewport.
+ */
 function initStarfield(){
   const cv=document.getElementById('cv-starfield');
   const dpr=window.devicePixelRatio||1;
@@ -266,8 +326,15 @@ function initStarfield(){
   animateStarfield();
 }
 /* ── TWINKLE STARS (disabled) ── */
-// Animated twinkling stars
+// Static twinkling stars overlaid on the galaxy map canvas.
+// Currently disabled (initTwinkle() call is commented out in init).
+// Uses sine wave oscillation for smooth alpha pulsing.
 const twinkleStars=[];
+
+/**
+ * DISABLED. Initialize 120 twinkling stars scattered across the galaxy area.
+ * Each star pulses between min/max alpha using sine wave oscillation.
+ */
 function initTwinkle(){
   const cv=document.getElementById('cv-twinkle');cv.width=CW;cv.height=CH;
   // Generate ~120 twinkling stars scattered across the galaxy area
@@ -287,6 +354,7 @@ function initTwinkle(){
   }
   animTwinkle();
 }
+/** DISABLED. Animation loop for twinkling stars. */
 function animTwinkle(){
   const cv=document.getElementById('cv-twinkle');
   if(!cv)return;
@@ -311,7 +379,18 @@ function animTwinkle(){
   requestAnimationFrame(animTwinkle);
 }
 /* ── GRID & REGION RENDERING ── */
+
+/** STUB: Region polygon rendering. Currently empty - regions are visualized
+ *  via the focusRegion() system with pulsing outlines instead. */
 function drawRegions(){}
+
+/**
+ * Render the navigation grid as DOM elements (resolution-independent at any zoom).
+ * Creates vertical/horizontal grid lines, column labels (C-U) at top/bottom,
+ * row labels (1-21) at left/right, and positions the Star Wars logo + title
+ * centered above the grid. Also positions the glass overlay (#grid-glass)
+ * exactly over the grid area.
+ */
 function drawGrid(){
   // Position glass overlay over the grid area
   const gg=document.getElementById('grid-glass');
@@ -365,14 +444,23 @@ function drawGrid(){
   }
   document.getElementById('mc').appendChild(gridLayer);
   // Position the title centered above the grid
+  const TITLE_OFFSET_ABOVE_GRID = 630; // px above grid top edge
   const mt=document.getElementById('maptitle');
   const gridCenterX=G.left+NCOLS*G.cellW/2;
   mt.style.left=gridCenterX+'px';
-  mt.style.top=(G.top-630)+'px';
+  mt.style.top=(G.top-TITLE_OFFSET_ABOVE_GRID)+'px';
   mt.style.transform='translateX(-50%)';
   mt.innerHTML='<img id="sw-logo-img" src="'+SW_LOGO+'" alt="Star Wars"/><span class="sw-sub">GALAXY MAP</span><span class="sw-quote">A long time ago in a galaxy far, far away</span>';
 }
 /* ── TRADE ROUTE RENDERING ── */
+
+/**
+ * Render hyperspace trade routes as Catmull-Rom splines on cv-routes canvas.
+ * For each route: computes and caches 200 dense spline points (_spline),
+ * draws a wide glow stroke + thin white line, and creates a clickable
+ * DOM label at the route midpoint. Starts the pulse animation after drawing.
+ * @param {string} [routeName] - Specific route name, or 'all-routes' for all
+ */
 function drawRoutes(routeName){
   const cv=document.getElementById('cv-routes');cv.width=CW;cv.height=CH;const ctx=cv.getContext('2d');
   // Remove any existing route labels
@@ -433,7 +521,16 @@ function drawRoutes(routeName){
 
 /* Route light pulse animation - traveling dots + alternating route glow */
 /* ── ROUTE PULSE ANIMATION ── */
+// Each route pulses in sequence over an 8-second cycle. During a route's
+// active window, a glow overlay and 3 traveling dots animate along the spline.
+// Dots pulse 0-100% opacity as they travel for a "breathing" effect.
 let routeAnimId=null;
+
+/**
+ * Start the continuous route pulse animation on cv-route-anim canvas.
+ * Routes take turns glowing in sequence (staggered by index).
+ * Three dots travel along each route's cached spline during its active window.
+ */
 function startRouteAnimation(){
   if(routeAnimId)cancelAnimationFrame(routeAnimId);
   const cv=document.getElementById('cv-route-anim');
@@ -499,14 +596,23 @@ function startRouteAnimation(){
   routeAnimId=requestAnimationFrame(animate);
 }
 /* ── ROUTE ANIMATION STOP ── */
+
+/** Cancel the route pulse animation and clear the animation canvas. */
 function stopRouteAnimation(){
   if(routeAnimId){cancelAnimationFrame(routeAnimId);routeAnimId=null}
   const cv=document.getElementById('cv-route-anim');
   if(cv){cv.width=CW;cv.height=CH}
 }
 
-/* Route fact sheet panel */
 /* ── ROUTE PANEL ── */
+
+/**
+ * Open the fact sheet panel for a hyperspace trade route.
+ * Shows route metadata (type, waypoint count, grid span), then
+ * fetches detailed data from Wookieepedia asynchronously.
+ * Deselects any currently selected planet.
+ * @param {Object} route - Route object from ROUTES array with .n (name) and .p (waypoints)
+ */
 function openRoutePanel(route){
   const pn=document.getElementById('pn');
   pn.textContent=route.n;
@@ -528,6 +634,16 @@ function openRoutePanel(route){
 }
 
 /* ── ROUTE DATA FETCHING ── */
+
+/**
+ * Fetch and render Wookieepedia data for a trade route into #fact-sheet.
+ * Parallel-fetches the infobox (section 0) and section list, then:
+ *   1. Parses infobox fields (start/end points, stops, affiliation, etc.)
+ *   2. Extracts intro text as a description
+ *   3. Fetches History/Route description section if available
+ * Cleans all wikitext markup (refs, links, templates) before display.
+ * @param {Object} route - Route object with .n (name) and .p (waypoints)
+ */
 async function fetchRouteData(route){
   const el=document.getElementById('fact-sheet');if(!el)return;
   const wikiName=route.n.replace(/ /g,'_');
@@ -633,9 +749,17 @@ async function fetchRouteData(route){
     el.innerHTML='<span class="plore-l">"The archives are incomplete." -- Jocasta Nu</span>';
   }
 }
-/* Collision-aware tooltip positioning: checks nearby planets and picks
-   the direction (top/bottom/left/right) with the least obstruction */
 /* ── TOOLTIP SYSTEM ── */
+// Collision-aware tooltip positioning: checks nearby planets and viewport
+// edges to pick the direction (top/bottom/left/right) with least obstruction.
+
+/**
+ * Position a planet's tooltip to avoid overlapping nearby planets.
+ * Scores each direction (top/bottom/left/right) by proximity of neighbors
+ * and viewport edge distance, then picks the least obstructed direction.
+ * Visible tooltips on neighbors receive extra penalty weight.
+ * @param {HTMLElement} dotEl - Planet dot DOM element containing a .pt tooltip child
+ */
 function positionTooltip(dotEl){
   const tt=dotEl.querySelector('.pt');
   if(!tt)return;
@@ -679,6 +803,12 @@ function positionTooltip(dotEl){
   }
   tt.classList.add('tt-'+best);
 }
+/**
+ * Apply visual style to a planet tooltip based on its region color.
+ * @param {HTMLElement} dotEl - Planet dot element with data-r/g/b attributes
+ * @param {string} mode - 'normal' for standard glass tooltip, 'under' for
+ *   reduced opacity when another tooltip overlaps on top
+ */
 function applyTooltipStyle(dotEl, mode){
   // mode: 'normal' = region-colored glass (THE one and only tooltip style)
   //        'under' = lighter version, ONLY when another tooltip overlaps on top
@@ -701,6 +831,11 @@ function applyTooltipStyle(dotEl, mode){
     tt.style.webkitBackdropFilter='var(--glass-blur)';
   }
 }
+/**
+ * Show a planet's tooltip on hover. No-op if the planet is already
+ * highlighted (selected), since selected planets have persistent tooltips.
+ * @param {HTMLElement} dotEl - Planet dot element
+ */
 function showTooltip(dotEl){
   if(dotEl.classList.contains('hl'))return;
   const tt=dotEl.querySelector('.pt');
@@ -709,17 +844,28 @@ function showTooltip(dotEl){
   tt.style.display='block';
   applyTooltipStyle(dotEl,'normal');
 }
+/**
+ * Hide a planet's tooltip on mouse leave. No-op if highlighted (selected).
+ * @param {HTMLElement} dotEl - Planet dot element
+ */
 function hideTooltip(dotEl){
   const tt=dotEl.querySelector('.pt');
   if(!tt)return;
   if(dotEl.classList.contains('hl'))return;
   tt.style.display='none';
 }
-/* Planet significance tiers for size variation.
-   Tier 1 (major): Capital worlds, saga-critical planets
-   Tier 2 (notable): Significant in films/series but not saga-defining
-   Tier 3 (default): Everything else, with hash-based micro-variation */
 /* ── PLANET SIZING & RENDERING ── */
+// Three-tier planet sizing system based on narrative significance:
+//   Tier 1 (14px): Capital worlds, saga-critical planets (Coruscant, Tatooine, etc.)
+//   Tier 2 (12px): Significant in films/series but not saga-defining
+//   Tier 3 (8-11px): Everything else, with hash-based micro-variation
+const PLANET_SIZE_TIER1 = 14;
+const PLANET_SIZE_TIER2 = 12;
+const PLANET_SIZE_TIER3_MIN = 8;
+const PLANET_SIZE_TIER3_RANGE = 4; // 8, 9, 10, or 11
+const PLANET_SIZE_FOCUSED_BONUS = 4;  // extra px when region-focused
+const PLANET_SIZE_SELECTED_BONUS = 6; // extra px when selected/highlighted
+
 const PLANET_TIER1=new Set([
   'Coruscant','Tatooine','Naboo','Hoth','Endor','Mustafar','Kamino',
   'Kashyyyk','Dagobah','Alderaan','Bespin','Jakku','Mandalore','Scarif',
@@ -739,22 +885,38 @@ const PLANET_TIER2=new Set([
   'Raydonia','Florrum','Zanbar','Oba Diah','Numidian Prime',
   'Narkina 5','Ferrix','Aldhani','Niamos','Skako Minor'
 ]);
+/**
+ * Determine a planet's base dot size based on its significance tier.
+ * @param {string} name - Planet name
+ * @returns {number} Base size in pixels (8-14)
+ */
 function getPlanetSize(name){
-  if(PLANET_TIER1.has(name)) return 14;
-  if(PLANET_TIER2.has(name)) return 12;
-  // Hash-based variation for minor planets: range 8-11px
+  if(PLANET_TIER1.has(name)) return PLANET_SIZE_TIER1;
+  if(PLANET_TIER2.has(name)) return PLANET_SIZE_TIER2;
+  // Hash-based variation for minor planets
   let h=0;
   for(let i=0;i<name.length;i++) h=((h<<5)-h+name.charCodeAt(i))|0;
-  return 8+(Math.abs(h)%4); // 8, 9, 10, or 11
+  return PLANET_SIZE_TIER3_MIN+(Math.abs(h)%PLANET_SIZE_TIER3_RANGE);
 }
+/**
+ * Set a planet dot's rendered size based on its base size and current state.
+ * @param {HTMLElement} dotEl - Planet dot DOM element
+ * @param {number} size - Base size in pixels from getPlanetSize()
+ * @param {string} state - 'default', 'focused' (region highlighted), or 'hl' (selected)
+ */
 function applyPlanetSize(dotEl, size, state){
-  // state: 'default', 'focused', 'hl'
   let s=size;
-  if(state==='focused') s=size+4;
-  else if(state==='hl') s=size+6;
+  if(state==='focused') s=size+PLANET_SIZE_FOCUSED_BONUS;
+  else if(state==='hl') s=size+PLANET_SIZE_SELECTED_BONUS;
   dotEl.style.width=s+'px';
   dotEl.style.height=s+'px';
 }
+/**
+ * Render all star systems as interactive DOM dots on the #pl layer.
+ * For each system in S[]: computes position via g2p(), creates a colored dot
+ * with region-appropriate styling, attaches tooltip, halos, pulse ring, and
+ * click/hover event handlers. Populates the PE[] array for viewport culling.
+ */
 function renderPlanets(){
   const layer=document.getElementById('pl');layer.innerHTML='';PE=[];const frag=document.createDocumentFragment();
   S.forEach((sys,i)=>{const pos=g2p(sys.GRID,sys.SYSTEM);if(!pos)return;
@@ -786,18 +948,67 @@ function renderPlanets(){
   layer.appendChild(frag)
 }
 /* ── VIEWPORT NAVIGATION ── */
+const ZOOM_MIN = 0.2;
+const ZOOM_MAX = 6;
+const ZOOM_PLANET_VISIBILITY_THRESHOLD = 0.4; // planets hidden below this zoom level
+const VIEWPORT_CULL_PADDING = 120; // px buffer around viewport for planet visibility
+
+/**
+ * Apply the current transform (pan + zoom) to the map container.
+ * Called after any change to px, py, or sc.
+ */
 function aT(){document.getElementById('mc').style.transform=`translate(${px}px,${py}px) scale(${sc})`}
+
+/**
+ * Zoom to a new scale, keeping the point under the cursor stationary.
+ * Clamps zoom between ZOOM_MIN and ZOOM_MAX, updates pan to maintain
+ * the focal point, and refreshes dot visibility.
+ * @param {number} ns - New scale factor
+ * @param {number} [cx] - Focal X in screen coords (default: viewport center)
+ * @param {number} [cy] - Focal Y in screen coords (default: viewport center)
+ */
 function zT(ns,cx,cy){const vp=document.getElementById('vp'),r=vp.getBoundingClientRect();cx=cx??r.width/2;cy=cy??r.height/2;
-  const mx=(cx-px)/sc,my=(cy-py)/sc;ns=Math.max(.2,Math.min(6,ns));px=cx-mx*ns;py=cy-my*ns;sc=ns;aT();uDV()}
+  const mx=(cx-px)/sc,my=(cy-py)/sc;ns=Math.max(ZOOM_MIN,Math.min(ZOOM_MAX,ns));px=cx-mx*ns;py=cy-my*ns;sc=ns;aT();uDV()}
+
+/**
+ * Animate a smooth pan to center a star system on screen at 1.2x zoom.
+ * Used when selecting a planet from search or clicking a dot.
+ * @param {Object} sys - Star system object with .GRID and .SYSTEM properties
+ */
 function panTo(sys){const pos=g2p(sys.GRID,sys.SYSTEM);if(!pos)return;const r=document.getElementById('vp').getBoundingClientRect();
   sc=1.2;px=r.width/2-pos.x*sc;py=r.height/2-pos.y*sc;const mc=document.getElementById('mc');
   mc.style.transition='transform .5s cubic-bezier(.4,0,.2,1)';aT();setTimeout(()=>{mc.style.transition=''},550);uDV()}
-function uDV(){const show=sc>.4,layer=document.getElementById('pl');layer.style.display=show?'block':'none';
+
+/**
+ * Update dot visibility based on current viewport bounds.
+ * Hides the planet layer entirely when zoomed out past the visibility threshold.
+ * When visible, only shows dots within the viewport + padding buffer
+ * to maintain performance with 6500+ DOM elements.
+ */
+function uDV(){const show=sc>ZOOM_PLANET_VISIBILITY_THRESHOLD,layer=document.getElementById('pl');layer.style.display=show?'block':'none';
   if(!show)return;const r=document.getElementById('vp').getBoundingClientRect();
-  const vl=-px/sc-120,vt=-py/sc-120,vr=vl+r.width/sc+240,vb=vt+r.height/sc+240;
+  const vl=-px/sc-VIEWPORT_CULL_PADDING,vt=-py/sc-VIEWPORT_CULL_PADDING,vr=vl+r.width/sc+VIEWPORT_CULL_PADDING*2,vb=vt+r.height/sc+VIEWPORT_CULL_PADDING*2;
   PE.forEach(el=>{const ex=+el.dataset.px,ey=+el.dataset.py;el.style.display=(ex>vl&&ex<vr&&ey>vt&&ey<vb)?'':'none'})}
+/**
+ * Select a star system by index. Highlights the planet dot, pans/zooms to it,
+ * opens the fact sheet panel, and focuses its region. Clears any previous selection.
+ * @param {number} i - Index into the S[] systems array
+ * @param {string} [alias] - Optional alias key (e.g. 'korriban') if selected via alias search
+ */
 function selSys(i,alias){sel=S[i];PE.forEach(el=>{const wasHl=el.classList.contains('hl');el.classList.remove('hl');const tt=el.querySelector('.pt');if(tt)tt.style.display='none';if(wasHl){applyPlanetSize(el,+el.dataset.baseSize,el.classList.contains('focused')?'focused':'default');const orc=RCOL[el.dataset.region]||{dot:'#6688aa'};el.style.background=orc.dot;el.style.boxShadow=`0 0 3px 1px ${orc.dot}50, inset 0 0 2px rgba(255,255,255,0.3)`}if(+el.dataset.idx===i){el.classList.add('hl');applyPlanetSize(el,+el.dataset.baseSize,'hl');const rc=RCOL[S[i].REGION]||{dot:'#6688aa',hl:'#ffffff',glow:'rgba(255,255,255,0.6)'};el.style.background=rc.hl;el.style.boxShadow=`0 0 8px 2px ${rc.glow}, 0 0 20px ${rc.glow}, inset 0 0 3px rgba(255,255,255,0.4)`}});panTo(sel);openPanel(sel,alias);focusRegion(sel.REGION,false)}
+
+/**
+ * Clear the current planet selection. Resets all highlighted dots to their
+ * default state, closes the AI sheet and fact panel.
+ */
 function clrSel(){sel=null;PE.forEach(el=>{if(el.classList.contains('hl')){el.classList.remove('hl');applyPlanetSize(el,+el.dataset.baseSize,el.classList.contains('focused')?'focused':'default');const rc=RCOL[el.dataset.region]||{dot:'#6688aa'};el.style.background=rc.dot;el.style.boxShadow=`0 0 3px 1px ${rc.dot}50, inset 0 0 2px rgba(255,255,255,0.3)`;const tt=el.querySelector('.pt');if(tt)tt.style.display='none'}});document.getElementById('ai-sheet').classList.remove('open');document.getElementById('dp').classList.remove('open')}
+/**
+ * Open the fact sheet panel for a star system. Handles alias display logic
+ * (showing searched name vs canonical name), sets region color on the title,
+ * shows a loading spinner, and kicks off fetchAllData().
+ * @param {Object} sys - Star system object from S[]
+ * @param {string} [aliasKey] - Optional alias key if planet was found via alias search
+ */
 function openPanel(sys,aliasKey){
   document.getElementById('ai-sheet').classList.remove('open');
   const rc=RCOL[sys.REGION]||{dot:'#0A84FF'};
@@ -831,12 +1042,23 @@ function openPanel(sys,aliasKey){
   pb.innerHTML=`<div id="fact-sheet"><div style="display:flex;align-items:center;gap:10px;padding:8px 0"><div style="width:14px;height:14px;border:2px solid rgba(${hr},${hg},${hb},0.3);border-top-color:rgba(${hr},${hg},${hb},0.9);border-radius:50%;animation:spin .8s linear infinite"></div><span style="color:rgba(235,235,245,0.4);font-size:12px">Scanning galactic records...</span></div></div>`;
   document.getElementById('dp').classList.add('open');fetchAllData(sys,alias)}
 
-// Section headers
 /* ── PANEL CONTENT BUILDERS ── */
+
+/**
+ * Create a styled section header for fact sheet panels.
+ * @param {string} title - Section title text
+ * @returns {string} HTML string for the section header
+ */
 function sectionHeader(title){
   return `<div class="pst">${title}</div>`;
 }
-// Format long text into paragraphs for readability
+/**
+ * Break long text into HTML paragraphs for readability in the fact sheet.
+ * Groups sentences into ~4-sentence paragraphs (min 150 chars each).
+ * Returns text unchanged if under 300 chars or fewer than 3 sentences.
+ * @param {string} text - Plain text to format
+ * @returns {string} HTML with <p> tags, or original text if short enough
+ */
 function formatParagraphs(text){
   if(!text||text.length<300)return text;
   const sentences=text.match(/[^.!?]+[.!?]+\s*/g)||[text];
@@ -857,7 +1079,13 @@ function formatParagraphs(text){
   if(current.trim())paras.push(current.trim());
   return paras.map(p=>`<p style="margin:0 0 12px 0">${p}</p>`).join('');
 }
-// Shared helpers for building panel content
+/**
+ * Clean a raw Wookieepedia infobox value for display.
+ * Strips wiki links, templates, HTML tags, quotes, trailing punctuation,
+ * and collapses whitespace. Returns null if value is empty or "N/A".
+ * @param {*} v - Raw value from wiki infobox parsing
+ * @returns {string|null} Cleaned display string, or null if empty
+ */
 function cleanWikiVal(v){
   if(!v)return null;v=String(v);
   v=v.replace(/\[\[/g,'').replace(/\]\]/g,'').replace(/\{\{[^}]*\}\}/g,'');
@@ -866,8 +1094,27 @@ function cleanWikiVal(v){
   if(v.length<2||v==='N/A')return null;
   return v;
 }
+/**
+ * Build a single fact row HTML string for the panel, or empty string if value is empty.
+ * @param {string} label - Display label (e.g. "Climate", "Population")
+ * @param {*} val - Raw value to clean and display
+ * @returns {string} HTML for one fact row, or '' if value cleans to null
+ */
 function buildFactRow(label,val){val=cleanWikiVal(val);if(val)return `<div class="pf"><span class="pfl">${label}</span><span class="pfv">${val}</span></div>`;return ''}
 
+/**
+ * Build the complete HTML content for a planet's fact sheet panel.
+ * Assembles three sections:
+ *   1. Facts: System data (grid, region, sector) + planet data from wiki/SWAPI
+ *   2. Characters & Films: merged from SWAPI residents and wiki character extraction
+ *   3. Lore: Description, Inhabitants, Overview, History from wiki sections
+ * Used for both Canon and Legends content tabs.
+ * @param {Object} wiki - Parsed Wookieepedia data from fetchWikiInfobox()
+ * @param {Object|null} swapi - SWAPI data from fetchSWAPI(), or null for Legends
+ * @param {Object} sys - Star system object from S[] (has .GRID, .REGION, .SECTOR)
+ * @param {string} name - Display name of the planet
+ * @returns {{html: string, hasSubstantialContent: boolean}} Panel HTML and content flag
+ */
 function buildPlanetContent(wiki,swapi,sys,name){
   let html='';
   // === FACTS ===
@@ -945,6 +1192,18 @@ function buildPlanetContent(wiki,swapi,sys,name){
 }
 
 /* ── PLANET DATA FETCHING ── */
+
+/**
+ * Master data fetch for a selected planet. Orchestrates parallel API calls:
+ *   1. Wookieepedia infobox + sections (Canon article)
+ *   2. SWAPI planet data (climate, terrain, population, residents, films)
+ *   3. Legends page existence check (for Canon/Legends segmented control)
+ * Then builds the panel HTML, wires the Canon/Legends tab switcher,
+ * wires the AI chat input, and triggers progressive Legends fetch if available.
+ * ~200 lines - candidate for decomposition in future refactor.
+ * @param {Object} sys - Star system object from S[]
+ * @param {Object|null} alias - Alias entry from ALIASES map, or null
+ */
 async function fetchAllData(sys,alias){
   const el=document.getElementById('fact-sheet');if(!el)return;
   try{
@@ -1044,6 +1303,16 @@ async function fetchAllData(sys,alias){
 }
 
 /* ── LEGENDS DATA FETCHING ── */
+
+/**
+ * Progressive fetch for Legends-continuity planet data. Called after Canon
+ * content is already rendered, fetches the /Legends wiki article and populates
+ * the Legends tab. Enables the Legends button in the segmented control on
+ * success, or hides the control if no Legends data exists.
+ * @param {string} wikiName - Wiki page name (without /Legends suffix)
+ * @param {Object} sys - Star system object from S[]
+ * @param {string} name - Display name of the planet
+ */
 async function fetchLegendsData(wikiName,sys,name){
   try{
     const legendsName=wikiName.includes('/Legends')?wikiName:wikiName+'/Legends';
@@ -1131,6 +1400,15 @@ REPLACE: The placeholder responses in openAISheet() and the
 sheetInput send handler with actual API calls.
 =====================================
 */
+/**
+ * STUB: Open the AI chat bottom sheet ("The Planetary Codex").
+ * Currently shows placeholder responses explaining Claude Code integration
+ * is needed. The UI (drag-to-resize, region-colored bubbles, input wiring)
+ * is fully functional. See CLAUDE CODE INTEGRATION INSTRUCTIONS comment
+ * block above for API connection specs.
+ * @param {string} q - User's question text
+ * @param {string} regionDot - Hex color of the planet's region (e.g. '#0A84FF')
+ */
 function openAISheet(q,regionDot){
   const sheet=document.getElementById('ai-sheet');
   const msgs=document.getElementById('ai-messages');
@@ -1216,6 +1494,21 @@ document.addEventListener('DOMContentLoaded',()=>{
 });
 
 /* ── WOOKIEEPEDIA API ── */
+/**
+ * Fetch and parse a Wookieepedia planet article into structured data.
+ * Performs parallel fetches for the infobox (section 0) and section list, then:
+ *   1. Parses infobox fields (region, sector, system, climate, species, etc.)
+ *   2. Extracts intro text from the article lead
+ *   3. Fetches Description, History, and Inhabitants sections individually
+ *   4. Extracts character names by counting wiki-linked proper nouns
+ *   5. Falls back to "[Name] 4" for sparse system stubs (Yavin->Yavin 4)
+ * All wikitext markup is cleaned (refs, templates, links, HTML tags).
+ * Sets _isLegends flag if article title contains "/Legends".
+ * ~150 lines - candidate for decomposition (DRY with fetchRouteData cleanup).
+ * @param {string} wikiName - Wiki page name (e.g. "Tatooine" or "Korriban/Legends")
+ * @returns {Object} Parsed planet data with fields like .intro, .description,
+ *   .history, .species, .climate, .characters[], ._isLegends, ._displayName
+ */
 async function fetchWikiInfobox(wikiName){
   try{
     // Fetch infobox (section 0) + article sections list in parallel
@@ -1401,6 +1694,15 @@ async function fetchWikiInfobox(wikiName){
 
 
 /* ── SWAPI (Star Wars API) ── */
+
+/**
+ * Fetch planet data from the Star Wars API (swapi.dev).
+ * Returns climate, terrain, population, diameter, gravity, surface water,
+ * orbital period, and resolves resident names (first 8) and film titles.
+ * SWAPI is supplementary - Wookieepedia is the primary data source.
+ * @param {string} name - Planet name to search for
+ * @returns {Object} Planet data with resolved residents[] and films[] arrays
+ */
 async function fetchSWAPI(name){
   try{
     const r=await fetch('https://swapi.dev/api/planets/?search='+encodeURIComponent(name));
@@ -1431,10 +1733,28 @@ async function fetchSWAPI(name){
   }catch(e){return {}}
 }
 /* ── INTELLIGENT SEARCH ── */
+
+/**
+ * Test if a search query is a natural language question (vs a planet name lookup).
+ * Matches question words at start (where, who, what, etc.) or trailing '?'.
+ * @param {string} q - Search query text
+ * @returns {boolean} True if the query appears to be a question
+ */
 function isQuestion(q){return /^(where|who|what|which|how|why|tell|show|find|take|is |was |did |does |can )/i.test(q)||q.includes('?')}
-// Universal question resolver
-// 1. Extract subject name  2. Search Wookieepedia  3. Extract ALL planet mentions
-// 4. Rank planets by context match to question words  5. Return best match
+
+/**
+ * Universal question resolver: finds the most relevant planet for any question.
+ * Five-step process:
+ *   1. Extract subject name from the question (proper nouns, known phrases, events)
+ *   2. Search Wookieepedia for the subject article
+ *   3. Fetch the article and extract ALL planet mentions (wiki links + infobox fields)
+ *   4. Score each mentioned planet by contextual relevance to the question's intent
+ *      words (died, trained, exiled, etc.) with synonym expansion
+ *   5. Return the best-scoring planet match from the S[] database
+ * ~150 lines - candidate for decomposition.
+ * @param {string} q - Natural language question (e.g. "Where did Yoda go into exile?")
+ * @returns {Object|null} {idx, name, matchType, score} or null if no match found
+ */
 async function wikiCharLookup(q){
   const ql=q.toLowerCase().replace(/\u2019s\b/g,' ').replace(/'s\b/g,' ').replace(/[?.!,'"]/g,'').replace(/\s+/g,' ').trim();
   // ── EXTRACT SUBJECT NAME ──
@@ -1593,6 +1913,17 @@ async function wikiCharLookup(q){
   return null;
 }
 
+/**
+ * Execute an intelligent search from the search bar. Shows a loading spinner,
+ * runs wikiCharLookup() to resolve the question to a planet, then either:
+ *   - Auto-selects the planet if found in the database
+ *   - Shows a "planet not in database" message if wiki found it but DB doesn't have it
+ *   - Shows a "not found" message with Jocasta Nu quote if wiki lookup failed
+ * Handles "unknown" planet results with a mystery-themed response.
+ * @param {string} q - Search query or natural language question
+ * @param {HTMLElement} si - Search input element
+ * @param {HTMLElement} sr - Search results dropdown element
+ */
 async function aiSearch(q,si,sr){
   sr.innerHTML='<div style="padding:14px 18px;display:flex;align-items:center;gap:10px"><div style="width:16px;height:16px;border:2px solid rgba(10,132,255,0.3);border-top-color:rgba(10,132,255,0.9);border-radius:50%;animation:spin .8s linear infinite"></div><span style="color:rgba(235,235,245,0.5);font-size:13px">Searching the galaxy...</span></div>';
   sr.style.display='block';
@@ -1614,6 +1945,13 @@ async function aiSearch(q,si,sr){
   }
   sr.innerHTML='<div style="padding:14px 18px;color:rgba(235,235,245,0.45);font-size:13px;font-style:italic">"If an item does not appear in our records, it does not exist." <span style="color:rgba(235,235,245,0.25);font-size:11px;display:block;margin-top:6px">-- Jocasta Nu, Jedi Archives</span></div>';
 }
+/**
+ * Find a planet name in the S[] database with fuzzy matching.
+ * Tries in order: alias lookup, exact match, match without Roman numeral
+ * suffixes (IV, Prime, Minor, etc.), partial contains match.
+ * @param {string} planet - Planet name to search for
+ * @returns {number} Index into S[], or -1 if not found
+ */
 function findInDB(planet){
   if(!planet)return -1;
   const pl=planet.toLowerCase();
@@ -1634,6 +1972,14 @@ function findInDB(planet){
   idx=S.findIndex(s=>pl.includes(s.SYSTEM.toLowerCase())&&s.SYSTEM.length>3);
   return idx;
 }
+/**
+ * Display an AI search result in the dropdown and auto-select after 600ms.
+ * Handles alias display (showing wiki name with canonical name in parentheses).
+ * @param {HTMLElement} sr - Search results dropdown element
+ * @param {HTMLElement} si - Search input element
+ * @param {number} idx - Index into S[] for the matched planet
+ * @param {string} key - The subject name that was searched (for "Associated with" label)
+ */
 function showAIResult(sr,si,idx,key){
   // Check if this planet has an alias
   const sysName=S[idx].SYSTEM.toLowerCase();
@@ -1654,6 +2000,13 @@ function showAIResult(sr,si,idx,key){
   setTimeout(()=>{selSys(idx,aliasKey);sr.style.display='none';si.value=S[idx].SYSTEM},600);
 }
 /* ── SEARCH BAR SETUP ── */
+
+/**
+ * Wire up the search bar with typeahead planet name matching, alias search,
+ * keyboard navigation (arrow keys + enter), question detection (routes to
+ * aiSearch), and clear button. Results show planet name, grid coordinate,
+ * and region with highlight on the matching substring.
+ */
 function setupSearch(){const si=document.getElementById('si'),sr=document.getElementById('sr'),sx=document.getElementById('sx');
   si.addEventListener('input',()=>{const q=si.value.trim();const ql=q.toLowerCase();sx.style.display=q?'block':'none';asi=-1;
     if(q.length<2){sr.style.display='none';return}
@@ -1702,9 +2055,31 @@ function setupSearch(){const si=document.getElementById('si'),sr=document.getEle
     else if(e.key==='Escape'){sr.style.display='none';si.blur()}});
   sx.addEventListener('click',()=>{si.value='';sx.style.display='none';sr.style.display='none';clrSel()});
   document.addEventListener('click',e=>{if(!document.getElementById('sc').contains(e.target))sr.style.display='none'})}
+/**
+ * Update the active/highlighted state of search result items for keyboard navigation.
+ * Scrolls the active item into view within the dropdown.
+ * @param {NodeList} items - Search result .ri elements
+ */
 function uAR(items){items.forEach((it,i)=>it.classList.toggle('ac',i===asi));if(items[asi])items[asi].scrollIntoView({block:'nearest'})}
+
+/**
+ * Highlight a substring match within a planet name for search results.
+ * Wraps the matching portion in a cyan-colored span.
+ * @param {string} t - Full text (planet name)
+ * @param {string} q - Query string to highlight (lowercase)
+ * @returns {string} HTML with highlighted match
+ */
 function hl(t,q){const i=t.toLowerCase().indexOf(q);if(i===-1)return t;return t.substring(0,i)+'<span style="color:var(--cyan)">'+t.substring(i,i+q.length)+'</span>'+t.substring(i+q.length)}
 /* ── ROUTE HIT TESTING ── */
+
+/**
+ * Test if a screen coordinate is close enough to a trade route spline to count
+ * as a click/hover hit. Converts screen coords to map coords, then checks
+ * distance against each route's cached spline points.
+ * @param {number} clientX - Screen X coordinate
+ * @param {number} clientY - Screen Y coordinate
+ * @returns {Object|null} The closest ROUTES entry within hit distance, or null
+ */
 function hitTestRoute(clientX,clientY){
   // Convert screen coords to map coords
   const mx=(clientX-px)/sc, my=(clientY-py)/sc;
@@ -1722,6 +2097,13 @@ function hitTestRoute(clientX,clientY){
   return bestRoute;
 }
 /* ── NAVIGATION SETUP (Pan/Zoom/Touch) ── */
+
+/**
+ * Wire up all map navigation: mouse drag for panning, wheel for zoom,
+ * zoom buttons (+/-/reset), touch pan and pinch-zoom, grid coordinate
+ * display on mousemove, route hit detection for hover cursor changes,
+ * and click-on-empty-space route selection. Also wires the close-panel button.
+ */
 function setupNav(){const vp=document.getElementById('vp');
   vp.addEventListener('mousedown',e=>{if(e.target.closest('#sc,#dp,#lg,#zc'))return;drag=true;dsx=e.clientX;dsy=e.clientY;psx=px;psy=py;vp.style.cursor='grabbing'});
   window.addEventListener('mousemove',e=>{if(drag){const newPx=psx+(e.clientX-dsx);const newPy=psy+(e.clientY-dsy);window.starfieldPan(newPx-px,newPy-py);px=newPx;py=newPy;aT();uDV()}
@@ -1754,7 +2136,19 @@ function setupNav(){const vp=document.getElementById('vp');
   vp.addEventListener('touchmove',e=>{if(e.touches.length===1&&drag){const newPx=psx+(e.touches[0].clientX-dsx);const newPy=psy+(e.touches[0].clientY-dsy);window.starfieldPan(newPx-px,newPy-py);px=newPx;py=newPy;aT();uDV()}else if(e.touches.length===2&&ltd){const nd=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);zT(sc*(nd/ltd),(e.touches[0].clientX+e.touches[1].clientX)/2,(e.touches[0].clientY+e.touches[1].clientY)/2);ltd=nd}},{passive:true});
   vp.addEventListener('touchend',()=>{drag=false;ltd=null;window.starfieldPanEnd()})}
 /* ── LOADER & INITIALIZATION ── */
+
+/**
+ * Update the loader progress bar and status text.
+ * @param {number} p - Progress percentage (0-100)
+ * @param {string} s - Status message text
+ */
 function uL(p,s){document.getElementById('lb').style.width=p+'%';document.getElementById('lst').textContent=s}
+
+/**
+ * Initialize the twinkling starfield background on the loading screen canvas.
+ * Creates 100 stars with random positions that pulse via sine wave.
+ * @returns {Function} Cleanup function to cancel the animation frame
+ */
 function initLoaderStars(){
   const cv=document.getElementById('ls-stars');
   if(!cv)return;
@@ -1783,6 +2177,18 @@ function initLoaderStars(){
   // Return cleanup function
   return ()=>{if(lsAnimId)cancelAnimationFrame(lsAnimId)};
 }
+/**
+ * Master initialization function. Orchestrates the full app boot sequence:
+ *   1. Start loader starfield animation
+ *   2. Render static background (drawBg), starfield, grid, routes
+ *   3. Fetch Database.json (6500+ star systems), fix "Mid Rm" typo
+ *   4. Render all planet dots
+ *   5. Wire search bar, navigation, region focus, legend toggles,
+ *      show-all toggle, route toggle, disclosure groups, voice search
+ *   6. Set initial viewport zoom/pan to fit the galaxy
+ *   7. Fade out and remove the loading screen
+ * Progress updates displayed via uL() throughout.
+ */
 async function init(){
   document.getElementById('ls-logo').src=SW_LOGO;
   const cleanupLoader=initLoaderStars();
