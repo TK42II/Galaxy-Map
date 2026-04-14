@@ -334,15 +334,37 @@ function drawBg(){
 
 // Animated radial starfield - stars drift outward from center
 // Acceleration system: call window.starfieldBoost() to trigger 3-second speed burst
+// Pan parallax: origin shifts opposite to drag direction
 let sfSpeedMult=1; // current speed multiplier
 let sfTargetMult=1; // target speed multiplier
 const SF_MAX_ACCEL=8; // max speed multiplier during boost
 const SF_ACCEL_RATE=0.08; // how fast to ramp up
 const SF_DECEL_RATE=0.03; // how fast to ramp down (slower for smooth ease-out)
+let sfOriginX=0,sfOriginY=0; // origin offset from center
+let sfDragVelX=0,sfDragVelY=0; // drag velocity for parallax
+let sfLastPx=0,sfLastPy=0; // last pan position for velocity calc
 
 window.starfieldBoost=function(){
   sfTargetMult=SF_MAX_ACCEL;
   setTimeout(()=>{sfTargetMult=1},3000);
+};
+
+// Called from pan handler to update starfield with drag movement
+let sfDragging=false;
+window.starfieldPan=function(dx,dy){
+  sfDragging=true;
+  sfDragVelX=dx;
+  sfDragVelY=dy;
+  // Ratchet up speed - only increases during a drag, never decreases
+  const vel=Math.sqrt(dx*dx+dy*dy);
+  const newMult=Math.min(SF_MAX_ACCEL,1+vel*0.3);
+  if(newMult>sfTargetMult) sfTargetMult=newMult;
+};
+window.starfieldPanEnd=function(){
+  sfDragging=false;
+  sfTargetMult=1;
+  sfDragVelX=0;
+  sfDragVelY=0;
 };
 
 function initStarfield(){
@@ -391,7 +413,22 @@ function initStarfield(){
       sfSpeedMult=Math.max(sfTargetMult,sfSpeedMult-(sfSpeedMult-sfTargetMult)*SF_DECEL_RATE-0.01);
     }
 
-    const cx=w/2,cy=h/2;
+    const cx=w/2+sfOriginX,cy=h/2+sfOriginY;
+
+    // Ease origin toward drag offset, decay back to center
+    sfOriginX+=-sfDragVelX*0.15;
+    sfOriginY+=-sfDragVelY*0.15;
+    // Clamp origin offset
+    const maxOff=Math.min(w,h)*0.3;
+    sfOriginX=Math.max(-maxOff,Math.min(maxOff,sfOriginX));
+    sfOriginY=Math.max(-maxOff,Math.min(maxOff,sfOriginY));
+    // Decay origin back to center when not dragging
+    if(sfTargetMult<=1){
+      sfOriginX*=0.95;
+      sfOriginY*=0.95;
+      if(Math.abs(sfOriginX)<0.5)sfOriginX=0;
+      if(Math.abs(sfOriginY)<0.5)sfOriginY=0;
+    }
     // Trail fade - shorter trails at high speed for streaking effect
     const trailFade=sfSpeedMult>2?0.06:0.12;
     ctx.fillStyle=`rgba(0,0,0,${trailFade})`;
@@ -1894,7 +1931,7 @@ function hitTestRoute(clientX,clientY){
 }
 function setupNav(){const vp=document.getElementById('vp');
   vp.addEventListener('mousedown',e=>{if(e.target.closest('#sc,#dp,#lg,#zc'))return;drag=true;dsx=e.clientX;dsy=e.clientY;psx=px;psy=py;vp.style.cursor='grabbing'});
-  window.addEventListener('mousemove',e=>{if(drag){px=psx+(e.clientX-dsx);py=psy+(e.clientY-dsy);aT();uDV()}
+  window.addEventListener('mousemove',e=>{if(drag){const newPx=psx+(e.clientX-dsx);const newPy=psy+(e.clientY-dsy);window.starfieldPan(newPx-px,newPy-py);px=newPx;py=newPy;aT();uDV()}
     else{const mx=(e.clientX-px)/sc,my=(e.clientY-py)/sc;const ci=Math.floor((mx-G.left)/G.cellW),ri=Math.floor((my-G.top)/G.cellH);
       document.getElementById('cd').textContent=(ci>=0&&ci<NCOLS&&ri>=0&&ri<NROWS)?`GRID: ${G.cols[ci]}-${ri+1}`:'GRID: --';
       // Route hover cursor
@@ -1907,6 +1944,7 @@ function setupNav(){const vp=document.getElementById('vp');
   window.addEventListener('mouseup',e=>{
     const wasDrag=drag&&(Math.abs(e.clientX-dsx)>5||Math.abs(e.clientY-dsy)>5);
     drag=false;document.getElementById('vp').style.cursor='';
+    window.starfieldPanEnd();
     // If it wasn't a drag and routes are visible, test for route click
     if(!wasDrag&&!e.target.closest('.pd,#sc,#dp,#lg,#zc')){
       const hit=hitTestRoute(e.clientX,e.clientY);
@@ -1920,8 +1958,8 @@ function setupNav(){const vp=document.getElementById('vp');
   document.getElementById('pc').addEventListener('click',clrSel);
   let ltd=null;
   vp.addEventListener('touchstart',e=>{if(e.touches.length===1){drag=true;dsx=e.touches[0].clientX;dsy=e.touches[0].clientY;psx=px;psy=py}else if(e.touches.length===2){drag=false;ltd=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY)}},{passive:true});
-  vp.addEventListener('touchmove',e=>{if(e.touches.length===1&&drag){px=psx+(e.touches[0].clientX-dsx);py=psy+(e.touches[0].clientY-dsy);aT();uDV()}else if(e.touches.length===2&&ltd){const nd=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);zT(sc*(nd/ltd),(e.touches[0].clientX+e.touches[1].clientX)/2,(e.touches[0].clientY+e.touches[1].clientY)/2);ltd=nd}},{passive:true});
-  vp.addEventListener('touchend',()=>{drag=false;ltd=null})}
+  vp.addEventListener('touchmove',e=>{if(e.touches.length===1&&drag){const newPx=psx+(e.touches[0].clientX-dsx);const newPy=psy+(e.touches[0].clientY-dsy);window.starfieldPan(newPx-px,newPy-py);px=newPx;py=newPy;aT();uDV()}else if(e.touches.length===2&&ltd){const nd=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);zT(sc*(nd/ltd),(e.touches[0].clientX+e.touches[1].clientX)/2,(e.touches[0].clientY+e.touches[1].clientY)/2);ltd=nd}},{passive:true});
+  vp.addEventListener('touchend',()=>{drag=false;ltd=null;window.starfieldPanEnd()})}
 function uL(p,s){document.getElementById('lb').style.width=p+'%';document.getElementById('lst').textContent=s}
 function initLoaderStars(){
   const cv=document.getElementById('ls-stars');
@@ -1954,7 +1992,7 @@ function initLoaderStars(){
 async function init(){
   document.getElementById('ls-logo').src=SW_LOGO;
   const cleanupLoader=initLoaderStars();
-  uL(5,'Mapping starfield');await new Promise(r=>setTimeout(r,30));drawBg();initTwinkle();initStarfield();
+  uL(5,'Mapping starfield');await new Promise(r=>setTimeout(r,30));drawBg();/*initTwinkle();*/initStarfield();
   uL(15,'Scanning regions');await new Promise(r=>setTimeout(r,30));drawRegions();
   uL(25,'Rendering grid');await new Promise(r=>setTimeout(r,30));drawGrid();
   uL(35,'Plotting hyperspace routes');await new Promise(r=>setTimeout(r,30));drawRoutes();
