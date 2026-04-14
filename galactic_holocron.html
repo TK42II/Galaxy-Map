@@ -646,9 +646,8 @@ function drawRoutes(routeName){
       lbl.textContent=route.n;
       lbl.dataset.route=route.n;
       const routeIdx=ROUTES.indexOf(route);
-      const offsetY=(routeIdx%2===0?-1:1)*60;
       lbl.style.left=mid.x+'px';
-      lbl.style.top=(mid.y+offsetY)+'px';
+      lbl.style.top=mid.y+'px';
       document.getElementById('pl').appendChild(lbl);
     }
   });
@@ -663,7 +662,7 @@ function startRouteAnimation(){
   const cv=document.getElementById('cv-route-anim');
   cv.width=CW;cv.height=CH;
   const ctx=cv.getContext('2d');
-  const SPEED=0.0006;
+  const SPEED=0.0012;
   let lastT=performance.now();
   const phases=ROUTES.map((_,i)=>({offset:i*0.15, speed:SPEED*(0.9+Math.random()*0.2)}));
   // Pulse cycle: each route pulses in sequence, staggered
@@ -704,17 +703,18 @@ function startRouteAnimation(){
         const alpha=0.35*pulseAmt;
         drawSpline(sp,16,`rgba(180,210,255,${alpha})`);
         drawSpline(sp,6,`rgba(255,255,255,${alpha*0.6})`);
-      }
 
-      // Traveling dots
-      for(let p=0;p<3;p++){
-        const dt2=(phase.offset+p/3)%1;
-        const idx=Math.floor(dt2*sp.length);
-        const pt=sp[Math.min(idx,sp.length-1)];
-        ctx.beginPath();
-        ctx.arc(pt.x,pt.y,4,0,Math.PI*2);
-        ctx.fillStyle='rgba(255,255,255,0.6)';
-        ctx.fill();
+        // Traveling dots - each pulses 0-100% opacity as it moves
+        for(let p=0;p<3;p++){
+          const dt2=(phase.offset+p/3)%1;
+          const idx=Math.floor(dt2*sp.length);
+          const pt=sp[Math.min(idx,sp.length-1)];
+          const dotPulse=(Math.sin(dt2*Math.PI*2)+1)/2;
+          ctx.beginPath();
+          ctx.arc(pt.x,pt.y,4,0,Math.PI*2);
+          ctx.fillStyle=`rgba(255,255,255,${dotPulse*pulseAmt})`;
+          ctx.fill();
+        }
       }
     });
     routeAnimId=requestAnimationFrame(animate);
