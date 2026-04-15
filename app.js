@@ -1767,8 +1767,8 @@ async function wikiCharLookup(q){
   let cm;while((cm=capsRx.exec(qNorm))!==null)capsAll.push({text:cm[1],idx:cm.index});
   const capsSkip=new Set(['Where','What','Which','Who','How','Why','Tell','Show','Find','Take','The','After','Before','During','When','Order','Planet','System','Spirit','Ghost','Force','Dark','Light','Side','Temple','Academy','Master','Clone','Jedi','Sith','Republic','Empire','Senate','Council','Wars','Star']);
   const properNouns=capsAll.filter(m=>!capsSkip.has(m.text)&&m.text.length>2);
-  const funcWords=new Set('where who what which how why tell show find take is was were are does did do can could would should on the a an me my planet system world about from located at in come came of after before during when to his her their its by with for into get got again also'.split(' '));
-  const intentWords=new Set('die died killed death born home homeworld native origin exile exiled hiding hid perish perished murdered shot down battle fought fight trained train visit travel frozen captured discovered found destroyed trapped imprisoned ghost spirit lived live start started began'.split(' '));
+  const funcWords=new Set('where who what which how why tell show find take is was were are does did do can could would should on the a an me my planet system world about located at in come came of after before during when to his her their its by with for into get got again also'.split(' '));
+  const intentWords=new Set('die died killed death born home homeworld native origin exile exiled hiding hid perish perished murdered shot down battle fought fight trained train visit travel frozen captured discovered found destroyed trapped imprisoned ghost spirit lived live start started began from raised grew homeland'.split(' '));
   const allStrip=new Set([...funcWords,...intentWords]);
   const contentWords=ql.replace(/'s\b/g,' ').split(/\s+/).filter(w=>!allStrip.has(w)&&w.length>1&&!/^\d+$/.test(w));
   const ctxOnly=new Set(['spirit','ghost','trapped','imprisoned','exiled','died','killed','born','trained','frozen','fought','lived','captured','destroyed','force','dark','light','side','temple','jedi','sith','master','clone','republic','empire','senate','council']);
@@ -1797,7 +1797,9 @@ async function wikiCharLookup(q){
     died:['death','killed','perished','fell','slain','murdered','executed'],
     die:['death','killed','perished','fell','slain','murdered','executed'],
     killed:['death','died','slain','murdered','executed','assassinated'],
-    born:['birthplace','homeworld','native','origin','birth'],
+    born:['birthplace','homeworld','native','origin','birth','raised','from','grew'],
+    from:['homeworld','native','origin','born','birthplace','raised','homeland','home'],
+    raised:['homeworld','native','origin','born','grew','home','homeland'],
     trained:['training','apprentice','padawan','academy','temple','learned','studied','master'],
     train:['training','apprentice','padawan','academy','temple','learned','studied'],
     frozen:['carbonite','encased','cloud city','bespin'],
@@ -1820,8 +1822,11 @@ async function wikiCharLookup(q){
   }catch(e){}
   if(!pageTitle)pageTitle=name.split(/\s+/).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join('_');
   // ── FETCH ARTICLE + RANK ALL PLANET MENTIONS ──
-  const pages=[pageTitle];
-  if(!pageTitle.includes('/Legends'))pages.push(pageTitle+'/Legends');
+  // Always try Canon first, then Legends. If search returned a Legends title,
+  // derive the Canon title by stripping /Legends.
+  const canonTitle=pageTitle.replace(/\/Legends$/,'');
+  const pages=[canonTitle];
+  pages.push(canonTitle+'/Legends');
   for(const page of pages){
     try{
       const r=await fetch('https://starwars.fandom.com/api.php?action=parse&page='+encodeURIComponent(page.replace(/ /g,'_'))+'&prop=wikitext&redirects=true&format=json&origin=*');
@@ -1832,9 +1837,21 @@ async function wikiCharLookup(q){
       const cutIdx=wt.search(/\n==\s*(?:Appearances|Sources|Behind the scenes|Notes and references|External links)\s*==/i);
       if(cutIdx>500)wt=wt.substring(0,cutIdx);
       // Helper: extract planet from infobox field
-      function fp(fn){const m=wt.match(new RegExp('\\|'+fn+'\\s*=\\s*([^\\n]+)','i'));if(!m)return null;
-        const pm=m[1].match(/\[\[([A-Z][a-zA-Z\s'-]+?)(?:\/Legends)?(?:\|[^\]]+)?\]\]/);if(pm)return pm[1].trim();
-        let v=m[1];v=v.replace(/\[\[([^|\]]+)(\|[^\]]+)?\]\]/g,'$1').replace(/\/Legends/g,'');
+      // Returns the planet name, or 'Unknown' if the field explicitly says unknown,
+      // or null if the field is empty/missing
+      function fp(fn){const m=wt.match(new RegExp('\\|'+fn+'\\s*=[ \\t]*([^\\n]*)','i'));if(!m)return null;
+        const raw=m[1].trim();
+        if(!raw||raw.length<2)return null;
+        // Detect explicitly unknown values before parsing
+        if(/\bunknown\b/i.test(raw)&&!/unknown regions/i.test(raw))return 'Unknown';
+        const pm=raw.match(/\[\[([A-Z][a-zA-Z\d\s'-]+?)(?:\/Legends)?(?:\|([^\]]+))?\]\]/);
+        if(pm){
+          // Use display text if available (handles [[Link|Display]] format)
+          const display=(pm[2]||pm[1]).trim();
+          if(/\bunknown\b/i.test(display)&&!/unknown regions/i.test(display))return 'Unknown';
+          return display;
+        }
+        let v=raw;v=v.replace(/\[\[([^|\]]+)(\|[^\]]+)?\]\]/g,'$1').replace(/\/Legends/g,'');
         v=v.replace(/\{\{[^}]*\}\}/g,'').replace(/<[^>]+>/g,'').replace(/'''+/g,'').replace(/''+/g,'').replace(/&[a-z]+;/gi,' ').replace(/\d+\s*BBY,?\s*/g,'').trim();
         return v.length>1?v:null}
       function scoreCtx(ctx){
@@ -1848,6 +1865,8 @@ async function wikiCharLookup(q){
       function isLikelyPlanet(n){
         if(n.length<3||n.length>30)return false;
         const nl=n.toLowerCase();
+        // Fast path: if it's in our database, it's definitely a planet
+        if(S.some(s=>s.SYSTEM.toLowerCase()===nl))return true;
         if(/^(darth|lord|master|captain|admiral|general|commander|king|queen|prince|princess|count|baron|senator|emperor|moff|grand)\s/i.test(n))return false;
         if(/(lightsaber|blaster|sabre|saber|droid|starfighter|cruiser|destroyer|freighter|fighter|corvette|shuttle|speeder|walker|tank)\b/i.test(nl))return false;
         if(/(language|species|order|guild|clan|tribe|army|navy|fleet|corps|legion|squad|force|council|senate|alliance|republic|empire|confederation|confederacy|resistance|rebellion)\b/i.test(nl))return false;
@@ -1858,12 +1877,16 @@ async function wikiCharLookup(q){
         // Reject likely person names: "Firstname Lastname" where both are typical name-length words
         const parts=n.split(/[\s-]+/);
         if(parts.length===2&&parts[0].length>=2&&parts[0].length<=12&&parts[1].length>=2&&parts[1].length<=15&&/^[A-Z][a-z]+$/.test(parts[0])&&/^[A-Z][a-z]+$/.test(parts[1]))return false;
-        if(!n.includes(' ')&&/^(human|male|female|death|force|galaxy|months|years|days|weeks|credits|destroyed|killed|captured|magic|clone|duel|mission|attack|weapon|power|energy|mind|body|spirit|ghost|time|travel|history|type|class|city|town|village|temple|palace|prison|ship|star|moon|sun|ring|gate|bridge|tower|wall|stone|iron|gold|water|fire|earth|wind|air|ice|sand|dust|void|space|annihilated|devastated|obliterated)$/i.test(nl))return false;
+        if(!n.includes(' ')&&/^(human|male|female|death|force|galaxy|months|years|days|weeks|credits|destroyed|killed|captured|magic|clone|duel|mission|attack|weapon|power|energy|mind|body|spirit|ghost|time|travel|history|type|class|city|town|village|temple|palace|prison|ship|star|moon|sun|ring|gate|bridge|tower|wall|stone|iron|gold|water|fire|earth|wind|air|ice|sand|dust|void|space|annihilated|devastated|obliterated|planet|dying|ritual|conquered|scrolls|priest|bones|escape|light|dark|meters|gender|father|mother|son|daughter|king|queen|prince|princess|hologram|holocron|crystal|artifact|amulet|mask|tomb|ruins|council|master|apprentice|padawan|knight|lord|hand|heart|eyes|head|blood|blade|cloak|robe|armor|helmet|throne|altar|desk|table|chair|door|floor|ceiling|roof|room|hall|chamber|window|corridor|passage|tunnel|cave|pit|pool|lake|river|mountain|valley|forest|jungle|swamp|ocean|sea|island|shore|beach|cliff|rock|tree|plant|animal|creature|beast|bird|fish|insect|snake|worm|droid|robot|machine|computer|screen|device|weapon|bomb|mine|trap|cage|cell|chain|rope|wire|cable|pipe|tube|vent|shaft|lift|ramp|stair|ladder|platform|bridge|dock|port|bay|hangar|garage|vault|safe|chest|box|crate|barrel|sack|bag|pack|bottle|cup|bowl|plate|tray|knife|sword|spear|axe|bow|arrow|shield|staff|wand|rod|stick|pole|flag|banner|sign|signal|beacon|lamp|torch|candle|flame|spark|smoke|fog|mist|cloud|rain|snow|storm|wind|wave|tide|current|flow|stream|flood|frost|heat|cold|warm|cool|hot|dry|wet|soft|hard|sharp|blunt|rough|smooth|thick|thin|wide|narrow|tall|short|long|deep|shallow|heavy|light|fast|slow|loud|quiet|bright|dim|clear|dark|inscription|engraving|carving|painting|statue|monument|memorial|Niman|Ataru|Soresu|Shien|Djem|Makashi|Juyo|Vaapad|Shii-Cho)$/i.test(nl))return false;
+        // Reject multi-word non-planet phrases
+        if(/^(escape pod|trade route|star system|battle station|throne room|training ground|meditation chamber|war room|dark side|light side|galactic core|outer rim|inner rim|mid rim|deep core|wild space|unknown region)/i.test(nl))return false;
+        // Reject if name ends with common non-planet suffixes
+        if(/\b(epics?|tales?|chronicles?|saga|journal|codex|manuscript|tome|archives?|records?)\b/i.test(nl))return false;
         return true;
       }
       const mentions=[];
       // Scan all planet links in article text with surrounding context
-      const plRx=/(.{0,100})\[\[([A-Z][a-zA-Z\s'-]+?)(?:\/Legends)?(?:\|([^\]]+))?\]\](.{0,100})/g;
+      const plRx=/(.{0,100})\[\[([A-Z][a-zA-Z\d\s'-]+?)(?:\/Legends)?(?:\|([^\]]+))?\]\](.{0,100})/g;
       let pm2;while((pm2=plRx.exec(wt))!==null){
         const pName=(pm2[3]||pm2[2]).trim();
         if(!isLikelyPlanet(pName))continue;
@@ -1881,10 +1904,44 @@ async function wikiCharLookup(q){
       ];
       for(const ibf of ibFields){
         const val=fp(ibf.f);if(!val)continue;
+        // Detect Unknown infobox values early -- if the authoritative field says
+        // Unknown for the question type being asked, return that immediately
+        // instead of falling through to noisy text scanning
+        if(val==='Unknown'){
+          const isHomeworldQ=ctxWords.some(cw=>['from','born','home','homeworld','native','origin','raised','homeland'].includes(cw)||(SYN[cw]&&SYN[cw].some(s=>['homeworld','native','origin','birthplace','home'].includes(s))));
+          const isDeathQ=ctxWords.some(cw=>['died','die','killed','death','perished'].includes(cw));
+          if((ibf.f==='homeworld'||ibf.f==='born'||ibf.f==='birthplace')&&(isHomeworldQ||ctxWords.length===0)){
+            return{planet:'Unknown',key:name+' (homeworld)'};
+          }
+          if((ibf.f==='death')&&isDeathQ){
+            return{planet:'Unknown',key:name+' (death)'};
+          }
+          continue; // Don't add Unknown to scoring pool
+        }
         let score=5; // infobox baseline higher than text
+        // When context words directly match this infobox field's purpose,
+        // boost score heavily so infobox authority wins over noisy text mentions
         for(const cw of ctxWords){if(ibf.kw.includes(cw))score+=6;if(SYN[cw]){for(const s of SYN[cw]){if(ibf.kw.includes(s))score+=3}}}
         mentions.push({planet:val,score,src:'infobox:'+ibf.f});
       }
+
+      // When context words are empty (question like "What planet was X from?")
+      // and no infobox field scored above baseline, prefer the homeworld fallback
+      // over random text mentions that all scored 0
+      const homeworldIntent=ctxWords.length===0||ctxWords.some(cw=>['from','born','home','homeworld','native','origin','raised','homeland'].includes(cw)||(SYN[cw]&&SYN[cw].some(s=>['homeworld','native','origin','birthplace','home'].includes(s))));
+      if(homeworldIntent){
+        const hw=fp('homeworld')||fp('planet')||fp('born')||fp('birthplace');
+        if(hw&&hw!=='Unknown'&&hw.length>1){
+          // Check if any text mention scored higher than the homeworld
+          const hwInMentions=mentions.find(m=>m.src.startsWith('infobox:')&&m.score>5);
+          if(!hwInMentions){
+            // No strong infobox match from other fields -- use homeworld directly
+            return{planet:hw.replace(/\/Legends/g,'').trim(),key:name+' (homeworld)'};
+          }
+        }
+        if(hw==='Unknown')return{planet:'Unknown',key:name+' (homeworld)'};
+      }
+
       // Sort by score, pick best
       mentions.sort((a,b)=>b.score-a.score);
       // Known entity-to-planet overrides for cases where wiki data isn't a planet name
@@ -1893,18 +1950,26 @@ async function wikiCharLookup(q){
         'starkiller base':'Ilum','cloud city':'Bespin','jedi temple':'Coruscant',
         'imperial palace':'Coruscant','senate building':'Coruscant','senate':'Coruscant',
         'first death star':'Yavin','second death star':'Endor'};
-      if(mentions.length>0&&(mentions[0].score>0||ctxWords.length===0)){
-        let planet=mentions[0].planet.replace(/\/Legends/g,'').replace(/\|.*/,'').trim();
-        // Check entity map for non-planet results
+      // Prefer mentions that are in our database over noise from text scanning.
+      // If the top result isn't in the DB but a lower-scored one is, use that instead.
+      // Infobox results are always trusted regardless of DB presence.
+      let bestMention=null;
+      for(const m of mentions){
+        if(m.score<=0&&ctxWords.length>0)break; // below threshold
+        let planet=m.planet.replace(/\/Legends/g,'').replace(/\|.*/,'').trim();
         const pl=planet.toLowerCase();
         if(entityMap[pl])planet=entityMap[pl];
-        // Reject if result starts with | or * (broken parse)
-        if(/^[|*]/.test(planet)){/* skip broken parse */}
-        else{
-          const ctx=ctxWords.length>0?ctxWords.join(' '):'homeworld';
-          if(planet.length>1)return{planet,key:name+' ('+ctx+')'};
-        }
+        if(/^[|*]/.test(planet))continue; // broken parse
+        if(planet.length<2)continue;
+        // Trust infobox results directly
+        if(m.src.startsWith('infobox:')){bestMention={planet,key:name+' ('+(ctxWords.length>0?ctxWords.join(' '):'homeworld')+')'};break}
+        // For text mentions, verify against database to filter noise
+        const inDB=findInDB(planet)>=0;
+        if(inDB){bestMention={planet,key:name+' ('+(ctxWords.length>0?ctxWords.join(' '):'homeworld')+')'};break}
+        // Keep first text mention as fallback even if not in DB
+        if(!bestMention)bestMention={planet,key:name+' ('+(ctxWords.length>0?ctxWords.join(' '):'homeworld')+')'};
       }
+      if(bestMention)return bestMention;
       // Fallback: homeworld
       const hw=fp('homeworld')||fp('planet')||fp('born')||fp('birthplace');
       if(hw&&hw.length>1)return{planet:hw.replace(/\/Legends/g,'').trim(),key:name+' (homeworld)'};
@@ -2463,7 +2528,7 @@ async function init(){
       if(sessionStarted&&!micBtn.classList.contains('disabled')){
         try{recognition.start()}catch(e){}
       }
-      if(isRecording){isRecording=false;micBtn.classList.remove('recording');si.placeholder='Search systems or ask a question...'}
+      if(isRecording){isRecording=false;micBtn.classList.remove('recording');si.placeholder='Search planets by name or character...'}
     };
     function startRecording(){
       if(isRecording)return;
@@ -2480,7 +2545,7 @@ async function init(){
       clearTimeout(autoSearchTimer);
       isRecording=false;
       micBtn.classList.remove('recording');
-      si.placeholder='Search systems or ask a question...';
+      si.placeholder='Search planets by name or character...';
       // Don't stop the session - keep it alive to avoid re-permission
     }
     micBtn.addEventListener('click',(e)=>{
