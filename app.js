@@ -1259,8 +1259,8 @@ async function fetchAllData(sys,alias){
     }
   }
 
-  // AI Chat placeholder
-  const planetName=document.getElementById('pn').textContent;
+  // AI Chat placeholder - strip "Legends" badge text that gets appended to Legends-only planet names
+  const planetName=document.getElementById('pn').textContent.replace(/Legends$/,'').trim();
   const _r=parseInt(rc.dot.slice(1,3),16),_g=parseInt(rc.dot.slice(3,5),16),_b=parseInt(rc.dot.slice(5,7),16);
   fullHtml+=`<div id="ai-chat">
 <div class="ph2"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h9a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H6l-2.5 2.5V10H2a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M5 10v1a1 1 0 0 0 1 1h5l2.5 2.5V12H15a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-3"/></svg>Ask about ${planetName}</div>
@@ -1414,7 +1414,7 @@ function openAISheet(q,regionDot){
   const msgs=document.getElementById('ai-messages');
   const sheetInput=document.querySelector('#ai-sheet-input textarea');
   const sheetSend=document.querySelector('#ai-sheet-input button');
-  const planetName=document.getElementById('pn').textContent;
+  const planetName=document.getElementById('pn').textContent.replace(/Legends$/,'').trim();
 
   // Apply region color
   const dot=regionDot||'#0A84FF';
