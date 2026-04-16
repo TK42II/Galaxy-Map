@@ -212,6 +212,7 @@ function initStarfield(){
   const stars=[];
   const NUM_STARS=300;
   const MIN_SPAWN=80,MAX_SPAWN=500;
+  const isFirefox=navigator.userAgent.includes('Firefox');
 
   function spawnStar(){
     const angle=Math.random()*Math.PI*2;
@@ -263,12 +264,13 @@ function initStarfield(){
       if(Math.abs(sfOriginY)<0.5)sfOriginY=0;
     }
     // Trail fade - shorter trails at high speed for streaking effect
-    const trailFade=sfSpeedMult>2?0.06:0.12;
+    // Firefox renders low-alpha compositing dimmer than Chrome, so use higher values
+    const trailFade=sfSpeedMult>2?(isFirefox?0.10:0.06):(isFirefox?0.20:0.12);
     ctx.fillStyle=`rgba(0,0,0,${trailFade})`;
     ctx.fillRect(0,0,w,h);
 
     // Subtle blue radial color gradients
-    ctx.globalAlpha=0.015;
+    ctx.globalAlpha=isFirefox?0.03:0.015;
     const bg1=ctx.createRadialGradient(cx*0.6,cy*0.7,0,cx*0.6,cy*0.7,w*0.4);
     bg1.addColorStop(0,'rgba(20,40,120,1)');bg1.addColorStop(1,'rgba(0,0,0,0)');
     ctx.fillStyle=bg1;ctx.fillRect(0,0,w,h);
@@ -300,13 +302,15 @@ function initStarfield(){
       const trailLen=s.speed*accel*(sfSpeedMult>2?16:8);
       const tx=sx-Math.cos(angle)*trailLen;
       const ty=sy-Math.sin(angle)*trailLen;
-      ctx.globalAlpha=s.alpha*(sfSpeedMult>2?0.5:0.3);
+      // Firefox renders low-alpha strokes dimmer, boost trail visibility
+      const ffBoost=isFirefox?1.8:1;
+      ctx.globalAlpha=Math.min(1,s.alpha*(sfSpeedMult>2?0.5:0.3)*ffBoost);
       ctx.strokeStyle=s.sat>0?`hsl(${s.hue},${s.sat}%,85%)`:'rgb(255,255,255)';
       ctx.lineWidth=s.size*(sfSpeedMult>2?0.5:0.7);
       ctx.beginPath();ctx.moveTo(tx,ty);ctx.lineTo(sx,sy);ctx.stroke();
 
       // Star dot
-      ctx.globalAlpha=s.alpha;
+      ctx.globalAlpha=Math.min(1,s.alpha*ffBoost);
       ctx.fillStyle=s.sat>0?`hsl(${s.hue},${s.sat}%,90%)`:'rgb(255,255,255)';
       ctx.beginPath();ctx.arc(sx,sy,s.size,0,Math.PI*2);ctx.fill();
     });
