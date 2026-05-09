@@ -1263,8 +1263,38 @@ async function fetchAllData(sys,alias){
     }
   }
 
-  // AI Chat placeholder - strip "Legends" badge text that gets appended to Legends-only planet names
+  // AI Chat - strip "Legends" badge text that gets appended to Legends-only planet names
   const planetName=document.getElementById('pn').textContent.replace(/Legends$/,'').trim();
+
+  // Collect planet context for AI conversation
+  const _ctx=[`Planet: ${planetName}`,`Region: ${sys.REGION}`,`Sector: ${sys.SECTOR||'Unknown'}`,`Grid: ${sys.GRID}`];
+  if(wiki.system||name)_ctx.push(`Solar System: ${wiki.system||name+' System'}`);
+  if(wiki.routes)_ctx.push(`Trade Routes: ${wiki.routes}`);
+  const _pop=(swapi&&swapi.population)||wiki.population;if(_pop)_ctx.push(`Population: ${_pop}`);
+  const _spec=[wiki.species,wiki.otherspecies].filter(Boolean).join(', ');if(_spec)_ctx.push(`Species: ${_spec}`);
+  const _clim=(swapi&&swapi.climate)||wiki.climate;if(_clim)_ctx.push(`Climate: ${_clim}`);
+  const _terr=(swapi&&swapi.terrain)||wiki.terrain;if(_terr)_ctx.push(`Terrain: ${_terr}`);
+  if(wiki.government)_ctx.push(`Government: ${wiki.government}`);
+  if(wiki.affiliation)_ctx.push(`Affiliation: ${wiki.affiliation}`);
+  if(wiki.cities)_ctx.push(`Cities: ${wiki.cities}`);
+  if(wiki.interest)_ctx.push(`Points of Interest: ${wiki.interest}`);
+  if(wiki.imports)_ctx.push(`Imports: ${wiki.imports}`);
+  if(wiki.exports)_ctx.push(`Exports: ${wiki.exports}`);
+  const _chars=new Set();
+  if(swapi&&swapi.residents)swapi.residents.forEach(c=>_chars.add(c));
+  if(wiki.characters)wiki.characters.forEach(c=>_chars.add(c));
+  if(_chars.size)_ctx.push(`Notable Characters: ${[..._chars].join(', ')}`);
+  if(swapi&&swapi.films&&swapi.films.length)_ctx.push(`Film Appearances: ${swapi.films.join(', ')}`);
+  if(wiki.description)_ctx.push(`\nDescription:\n${wiki.description}`);
+  if(wiki.inhabitants)_ctx.push(`\nInhabitants:\n${wiki.inhabitants}`);
+  if(wiki.intro)_ctx.push(`\nOverview:\n${wiki.intro}`);
+  if(wiki.history)_ctx.push(`\nHistory:\n${wiki.history}`);
+  if(wiki._isLegends)_ctx.push('\nNote: This is a Legends-continuity planet.');
+  window._aiPlanetName=planetName;
+  window._aiPlanetContext=_ctx.join('\n');
+  window._aiRegionColor=rc.dot;
+  window._aiMessages=[];
+
   const _r=parseInt(rc.dot.slice(1,3),16),_g=parseInt(rc.dot.slice(3,5),16),_b=parseInt(rc.dot.slice(5,7),16);
   fullHtml+=`<div id="ai-chat">
 <div class="ph2"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h9a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H6l-2.5 2.5V10H2a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M5 10v1a1 1 0 0 0 1 1h5l2.5 2.5V12H15a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-3"/></svg>Ask about ${planetName}</div>
@@ -1356,60 +1386,79 @@ async function fetchLegendsData(wikiName,sys,name){
 }
 
 /* ── AI CHAT (Planetary Codex) ── */
-/*
-CLAUDE CODE INTEGRATION INSTRUCTIONS
-=====================================
-This AI chat ("The Planetary Codex") is planet-scoped.
 
-DATA TO COLLECT (in fetchAllData, before calling openAISheet):
-- Planet name, region, sector, grid from sys object
-- All fact sheet rows (text content from the pf divs)
-- Associated characters, film appearances
-- Wiki description, inhabitants, intro, history
-- Canon vs Legends source (wiki._isLegends flag)
-- Store in window._aiPlanetContext as joined string
-- Store window._aiPlanetName, window._aiMessages=[], window._aiRegionColor
+let _codexKey='';
+try{_codexKey=localStorage.getItem('anthropic_key')||'';}catch(e){}
 
-API CALL:
-- Endpoint: https://api.anthropic.com/v1/messages
-- Model: claude-sonnet-4-20250514
-- max_tokens: 1000
-- system: System prompt (see below)
-- messages: window._aiMessages array [{role:'user',content:q},...]
+function _escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 
-SYSTEM PROMPT REQUIREMENTS:
-- Scoped to the current planet ONLY
-- Handles: characters, events, ships, orgs, species, trade routes,
-  culture, Force history, technology, strategic importance
-- Canon vs Legends: Default to Canon. When drawing from Legends
-  material, note it explicitly ("In Legends continuity...").
-  If the planet is Legends-only (wiki._isLegends=true), note this
-  once at the start of the conversation.
-- Off-scope redirection: acknowledge question, name correct planet,
-  say "You can search for [Planet] in the galaxy map to learn more",
-  redirect back with "Is there anything else about [Planet]?"
-- Sparse planets: If _aiPlanetContext is very short (under 200 chars),
-  the AI should acknowledge limited records and offer to discuss the
-  planet's region, nearby systems, or trade routes in the area.
-- Concise: 2-4 paragraphs, plain text, no emoji/markdown/bullets
+function _buildCodexPrompt(planetName){
+  const ctx=window._aiPlanetContext||'';
+  const isLeg=ctx.includes('Legends-continuity planet');
+  return `You are The Planetary Codex, an expert guide to the planet ${planetName} in the Star Wars galaxy. You have deep, precise knowledge of this planet's history, culture, inhabitants, notable events, characters, organizations, geography, trade routes, and strategic importance.
 
-RESPONSE: Parse data.content[0].text, split on \n\n into <p> tags,
-HTML-escape, append to #ai-messages, scroll to bottom.
+${ctx?`Planet data on file:\n${ctx}`:'(No data on file — this is a very obscure world with no Wookieepedia records.)'}
 
-UI: Region color is passed as second arg to openAISheet(q,regionDot).
-Apply to chat bubbles (.ai-msg.user background at 85% opacity)
-and send button (at 80% opacity).
+Rules:
+- Stay scoped to ${planetName} only. If asked about another location, acknowledge it, name it, say "You can search for [name] in the galaxy map to learn more," then redirect: "Is there anything else about ${planetName}?"
+- Default to Canon continuity. If drawing from Legends material, note it explicitly ("In Legends continuity...").${isLeg?`\n- ${planetName} is a Legends-only planet — note this once at the start of the conversation.`:''}
+- If the planet data is very sparse (under 200 characters), acknowledge the limited archive records and offer to discuss the region, nearby systems, or trade routes.
+- Write 2–4 paragraphs. Plain prose only — no markdown, no bullets, no emoji.`;
+}
 
-REPLACE: The placeholder responses in openAISheet() and the
-sheetInput send handler with actual API calls.
-=====================================
-*/
+async function _codexCall(q,msgs){
+  window._aiMessages=window._aiMessages||[];
+  window._aiMessages.push({role:'user',content:q});
+  const lid='codex-'+Date.now();
+  msgs.innerHTML+=`<div class="ai-label">The Planetary Codex</div><div id="${lid}" class="ai-msg assistant"><p style="opacity:0.45;font-style:italic">Consulting the Holocron…</p></div>`;
+  msgs.scrollTop=msgs.scrollHeight;
+  try{
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'x-api-key':_codexKey,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,system:_buildCodexPrompt(window._aiPlanetName||'this planet'),messages:window._aiMessages})
+    });
+    if(!resp.ok){const e=await resp.json().catch(()=>({}));throw new Error(e.error?.message||`HTTP ${resp.status}`);}
+    const data=await resp.json();
+    const text=data.content[0].text;
+    window._aiMessages.push({role:'assistant',content:text});
+    const el=document.getElementById(lid);
+    if(el)el.innerHTML=text.split(/\n\n+/).filter(p=>p.trim()).map(p=>`<p>${_escHtml(p.trim())}</p>`).join('');
+  }catch(err){
+    const el=document.getElementById(lid);
+    if(el)el.innerHTML=`<p style="color:rgba(255,100,100,0.9)">Error: ${_escHtml(err.message)}</p>`;
+    if(err.message.includes('401')||err.message.toLowerCase().includes('auth')){
+      _codexKey='';try{localStorage.removeItem('anthropic_key');}catch(e){}
+    }
+  }
+  msgs.scrollTop=msgs.scrollHeight;
+}
+
+async function _codexSend(q,msgs,bubbleBg){
+  msgs.innerHTML+=`<div class="ai-msg user" style="background:${bubbleBg}">${_escHtml(q)}</div>`;
+  msgs.scrollTop=msgs.scrollHeight;
+  if(!_codexKey){
+    msgs.innerHTML+=`<div class="ai-label">The Planetary Codex</div><div id="codex-key-entry" class="ai-msg assistant" style="padding:14px 16px"><p style="margin:0 0 10px">The Planetary Codex uses Claude AI to answer questions about this planet using data pulled live from Wookieepedia.</p><p style="margin:0 0 10px">To activate it, you need a personal Anthropic API key. The AI runs on Anthropic's servers — not in the browser — so every question you ask costs a small amount of compute. At roughly $0.01–$0.02 per conversation, a $5 credit would last months of casual use.</p><p style="margin:0 0 12px">Get a key at <span style="opacity:0.7">console.anthropic.com</span> → API Keys. It stays saved in your browser and is only ever sent to api.anthropic.com.</p><div style="display:flex;gap:8px"><input type="password" id="codex-key-input" placeholder="sk-ant-..." style="flex:1;background:rgba(118,118,128,0.2);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px 10px;color:rgba(255,255,255,0.9);font-family:var(--sf);font-size:13px;outline:none;min-width:0"><button id="codex-key-save" style="background:${bubbleBg};border:none;border-radius:8px;padding:8px 14px;color:#fff;cursor:pointer;font-size:13px;white-space:nowrap;font-family:var(--sf)">Save</button></div></div>`;
+    msgs.scrollTop=msgs.scrollHeight;
+    const inp=document.getElementById('codex-key-input');
+    const btn=document.getElementById('codex-key-save');
+    inp.focus();
+    const save=async()=>{
+      const k=inp.value.trim();if(!k)return;
+      _codexKey=k;try{localStorage.setItem('anthropic_key',k);}catch(e){}
+      document.getElementById('codex-key-entry')?.remove();
+      await _codexCall(q,msgs);
+    };
+    inp.addEventListener('keydown',e=>{if(e.key==='Enter')save();});
+    btn.addEventListener('click',save);
+    return;
+  }
+  await _codexCall(q,msgs);
+}
+
 /**
- * STUB: Open the AI chat bottom sheet ("The Planetary Codex").
- * Currently shows placeholder responses explaining Claude Code integration
- * is needed. The UI (drag-to-resize, region-colored bubbles, input wiring)
- * is fully functional. See CLAUDE CODE INTEGRATION INSTRUCTIONS comment
- * block above for API connection specs.
+ * Open the AI chat bottom sheet ("The Planetary Codex") and send the first question.
+ * Planet context must be pre-collected into window._aiPlanetContext by fetchAllData.
  * @param {string} q - User's question text
  * @param {string} regionDot - Hex color of the planet's region (e.g. '#0A84FF')
  */
@@ -1418,36 +1467,28 @@ function openAISheet(q,regionDot){
   const msgs=document.getElementById('ai-messages');
   const sheetInput=document.querySelector('#ai-sheet-input textarea');
   const sheetSend=document.querySelector('#ai-sheet-input button');
-  const planetName=document.getElementById('pn').textContent.replace(/Legends$/,'').trim();
+  const planetName=window._aiPlanetName||document.getElementById('pn').textContent.replace(/Legends$/,'').trim();
 
-  // Apply region color
-  const dot=regionDot||'#0A84FF';
+  const dot=regionDot||window._aiRegionColor||'#0A84FF';
   const r=parseInt(dot.slice(1,3),16),g=parseInt(dot.slice(3,5),16),b=parseInt(dot.slice(5,7),16);
   const bubbleBg=`rgba(${r},${g},${b},0.85)`;
-  const sendBg=`rgba(${r},${g},${b},0.8)`;
-  sheetSend.style.background=sendBg;
-
-  // Set title
+  sheetSend.style.background=`rgba(${r},${g},${b},0.8)`;
   document.getElementById('ai-sheet-planet').textContent='Ask about '+planetName;
 
-  // Show user message and placeholder response
-  msgs.innerHTML='';
-  if(q){
-    msgs.innerHTML+=`<div class="ai-msg user" style="background:${bubbleBg}">${q.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>`;
-    msgs.innerHTML+='<div class="ai-label">The Planetary Codex</div><div class="ai-msg assistant"><p>AI chat requires Claude Code to connect to the Anthropic API. The UI, system prompt design, and conversation architecture are ready.</p><p style="opacity:0.5;font-size:12px;margin-top:6px">See CLAUDE CODE INTEGRATION INSTRUCTIONS in the source code to activate.</p></div>';
-  }
   sheet.style.height='';sheet.style.transition='';
   sheet.classList.add('open');
 
-  // Wire sheet input for placeholder responses
+  if(!_codexKey){
+    msgs.innerHTML=`<div class="ai-label">The Planetary Codex</div><div class="ai-msg assistant"><p>The Planetary Codex uses Claude AI to answer questions about this planet using data pulled live from Wookieepedia.</p><p>To activate it, you need a personal Anthropic API key. The AI runs on Anthropic's servers — not in your browser — so each question costs a small amount of compute. At roughly $0.01–$0.02 per conversation, a $5 credit would last months of casual use.</p><p>Get a key at <span style="opacity:0.7">console.anthropic.com</span> → API Keys. It will be saved in your browser and only ever sent to api.anthropic.com.</p></div>`;
+  } else {
+    msgs.innerHTML='';
+  }
+
+  if(q)_codexSend(q,msgs,bubbleBg);
+
   sheetInput.value='';sheetSend.disabled=true;
   sheetInput.oninput=()=>{sheetSend.disabled=!sheetInput.value.trim()};
-  const send=()=>{
-    const v=sheetInput.value.trim();if(!v)return;
-    msgs.innerHTML+=`<div class="ai-msg user" style="background:${bubbleBg}">${v.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>`;
-    msgs.innerHTML+='<div class="ai-label">The Planetary Codex</div><div class="ai-msg assistant"><p>Not yet connected. Awaiting Claude Code integration.</p></div>';
-    sheetInput.value='';sheetSend.disabled=true;msgs.scrollTop=msgs.scrollHeight;
-  };
+  const send=()=>{const v=sheetInput.value.trim();if(!v)return;sheetInput.value='';sheetSend.disabled=true;_codexSend(v,msgs,bubbleBg)};
   sheetInput.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}};
   sheetSend.onclick=send;
 }
