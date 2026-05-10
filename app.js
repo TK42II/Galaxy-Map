@@ -1410,7 +1410,7 @@ async function _codexCall(q,msgs){
   window._aiMessages=window._aiMessages||[];
   window._aiMessages.push({role:'user',content:q});
   const lid='codex-'+Date.now();
-  msgs.innerHTML+=`<div class="ai-label">The Planetary Codex</div><div id="${lid}" class="ai-msg assistant"><p style="opacity:0.45;font-style:italic">Consulting the Holocron…</p></div>`;
+  msgs.innerHTML+=`<div id="${lid}" class="ai-msg assistant"><p style="opacity:0.45;font-size:12px;margin:0 0 8px;letter-spacing:0.03em">Searching the archives</p><div class="ai-typing"><span></span><span></span><span></span></div></div>`;
   msgs.scrollTop=msgs.scrollHeight;
   try{
     const resp=await fetch('https://api.anthropic.com/v1/messages',{
