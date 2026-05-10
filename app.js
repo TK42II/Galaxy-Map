@@ -1416,7 +1416,7 @@ async function _codexCall(q,msgs){
     const resp=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{'x-api-key':_codexKey,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,system:_buildCodexPrompt(window._aiPlanetName||'this planet'),messages:window._aiMessages})
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,system:_buildCodexPrompt(window._aiPlanetName||'this planet'),messages:window._aiMessages})
     });
     if(!resp.ok){const e=await resp.json().catch(()=>({}));throw new Error(e.error?.message||`HTTP ${resp.status}`);}
     const data=await resp.json();
